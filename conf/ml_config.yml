@@ -1,0 +1,15 @@
+data_source:
+  type: 'file' #数据源类型
+  format: 'txt' # 文件的格式（支持excel、txt、csv）
+  field_sep: ',' # 字段（属性、特征）之间的分隔符.
+  path: 'E:\pycharm_workspace\cda\d2l\data\house-prices-advanced-regression-techniques\train.csv'
+#  path: 'E:\pycharm_workspace\cda\ml-practice\datasets\housing\housing.csv'
+#  path: '../data/LEVEL III 案例分析_模拟_数据/sina_train.csv'
+  #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
+  header: 0 # 标题行.
+
+explore_data:
+  head_num: 10  # 打印数据的前多少行.
+  #  c_fields: MSSubClass,MSZoning  # 类别字段配置，如果配置了该字段，c_fields_ratio配置失效.
+  c_fields_ratio: 0.02  # 判断类别字段的阈值，列的不同值占总行数的比例不大于该值被判定为类别字段.
+  v_field:
