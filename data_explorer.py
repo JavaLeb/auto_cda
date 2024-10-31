@@ -1,4 +1,4 @@
-from tools import data_explorer_conf, print_with_sep_line
+from tools import data_explorer_conf, print_with_sep_line, get_fields
 import pandas as pd
 from pandas import DataFrame
 import matplotlib.pyplot as plt
@@ -10,12 +10,14 @@ CLASS_FIELDS = 'class_fields'
 CLASS_FIELDS_RATIO = 'class_fields_ratio'
 UNIQUE_CLASS_NUM = 'unique_class_num'
 SHOW_HIST_PLOT = 'show_hist_plot'
+SHOW_RELATION_PLOT = 'show_relation_plot'
+TEXT_FIELDS = 'text_fields'
 
 
 class DataExplorer:
     def __init__(self, data: DataFrame) -> None:
         self._data = data
-        self._info = DataFrame
+        self._info = DataFrame()
 
         from pandas.io.formats.info import DataFrameInfo
         info = DataFrameInfo(data=self._data, memory_usage=True)
@@ -33,9 +35,10 @@ class DataExplorer:
 
         self._head_n_data = None
         self._class_field_list = []
+        self._text_field_list = []
         self.field_type_dic = {}
         self._hist_plot_field = []
-        self._missing_value = DataFrame
+        self._missing_value = DataFrame()
         self._missing_field = []
         self._detail = []
 
@@ -49,7 +52,7 @@ class DataExplorer:
         self._explore_field()
         self.explore_missing_value()
         self.explore_duplicate_value()
-
+        self._explore_relation(self._data)
         self.print_summary()
 
         # 直方图.
@@ -130,8 +133,11 @@ class DataExplorer:
             elif str(self._built_info.dtypes[col]).startswith('object'):
                 f_type_list.append('OBJECT')
                 self.field_type_dic[col] = 'OBJECT'
+                self._text_field_list.append(col)
             else:
                 raise Exception(f'无法确认字段[{col}]的类型')
+        text_fields = get_fields(data_explorer_conf, TEXT_FIELDS, self._data.columns)
+        self._text_field_list = (set(text_fields) | set(self._text_field_list))
         f_type_df = pd.Series(f_type_list, index=self._data.columns).rename('Ftype')
         self._info = pd.concat([self._info, f_type_df], axis=1)
 
@@ -180,6 +186,26 @@ class DataExplorer:
         if len(duplicates) > 0:
             self._detail.append('_' * 50)
             self._detail.append(f'重复数据详细信息（部分重复数据）：\n{self._data.loc[duplicates.head(10).index]}')
+
+    def _explore_relation(self, data: DataFrame):
+        # 进行相关性分析前，需要将文本字段删除.
+        if self._text_field_list:
+            corr_matrix = data.drop(self._text_field_list, axis=1).corr()
+        else:
+            corr_matrix = data.corr()
+        self._detail.append('_' * 50)
+        self._detail.append(f'数据的相关性矩阵：\n{corr_matrix.to_markdown()}')
+
+        # 热力图.
+        if SHOW_RELATION_PLOT in data_explorer_conf:
+            if data_explorer_conf.get(SHOW_RELATION_PLOT):
+                # 热力图.
+                sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
+                plt.title('matrix relation')
+                # 两个变量之间的散点图.
+                pd.plotting.scatter_matrix(data, figsize=(20, 10))
+                plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 调整每个图之间的距离.
+                plt.show()
 
     def _histplot(self, data: DataFrame = None) -> None:
         row_num, col_num = 3, 4  # 一个图的行数和列数.

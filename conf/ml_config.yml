@@ -3,23 +3,32 @@ data_source:
   format: 'txt' # 文件的格式（支持excel、txt、csv）
   field_sep: ',' # 字段（属性、特征）之间的分隔符.
   #  path: 'E:\pycharm_workspace\cda\d2l\data\house-prices-advanced-regression-techniques\train.csv'
-#  path: 'E:\pycharm_workspace\auto_cda\data\housing\housing.csv'
-  path: 'E:\pycharm_workspace\auto_cda\data\sina_train.csv'
+  path: 'E:\pycharm_workspace\auto_cda\data\housing\housing.csv'
+  #  path: 'E:\pycharm_workspace\auto_cda\data\sina_train.csv'
   #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
   header: 0 # 标题行.
 
 data_explorer:
   head_num: 10  # 打印数据的前多少行.
-  #  class_fields: channel_title  # 类别字段配置，如果配置了该字段，c_fields_ratio、unique_class_num配置失效.
+  class_fields:   # 类别字段配置，如果配置了该字段，c_fields_ratio、unique_class_num配置失效.
+  text_fields:  # 文本字段，该配置字段和object类型字段判定为文本字段.
   class_fields_ratio: 0.02  # 判断类别字段的阈值，列的不同值占总行数的比例不大于该值被判定为类别字段.
   unique_class_num: 20  # 判断类别字段的阈值. 列的不同值不大于该值，才认为是类别字段.
   show_hist_plot: false
-  value_field:
+  show_relation_plot: false # 展示相关性矩阵热力图.
+
+
 
 # ============================================================================================================
 data_splitter:
-  #  type: simple # 简单交叉验证（simple）、K折交叉验证（k_fold）、留一法交叉验证（LOO）、留P法交叉验证（LPO）.
-  #  train_size: 0.7
+  type: simple # 简单交叉验证（simple）、K折交叉验证（k_fold）、留一法交叉验证（LOO）、留P法交叉验证（LPO）.
+  train_size: 0.7
 
-  type: k_fold
+  #  type: k_fold
   k: 5
+
+data_processor:
+  # 对有序类别进行编码，填写字段名称，多个字段以英文逗号“,”分隔.
+  ordinal_encoder_fields: ocean_proximity
+  # 对无序类别进行编码，填写字段名称，多个字段以英文逗号","分隔.
+  one_hot_encoder_fields: ocean_proximity

@@ -32,6 +32,29 @@ class ConfParser:
             raise Exception("不支持的配置文件格式")
 
 
+class Configuration:
+    def __init__(self):
+        pass
+
+
+class DataProcessorConf(Configuration):
+    def __init__(self):
+        super().__init__()
+
+
+def get_fields(sub_conf, conf_name, data_columns):
+    fields_conf = sub_conf.get(conf_name)
+    fields_list = []
+    if fields_conf:
+        for col in set([field.strip() for field in fields_conf.strip().split(',')]):
+            if col in data_columns:
+                fields_list.append(col)
+            else:
+                raise Exception(f"配置{conf_name}错误，不存在字段{col}")
+
+    return fields_list
+
+
 # 配置加载.
 ds_conf_path = r'conf/ml_config.yml'  # 配置文件路径.
 logger.info(f'开始加载配置{ds_conf_path}....................')
@@ -40,4 +63,5 @@ conf = conf_parser.parse()
 data_explorer_conf = conf.get('data_explorer')
 data_source_conf = conf.get('data_source')
 data_splitter_conf = conf.get('data_splitter')
+data_processor_conf = conf.get('data_processor')
 logger.info(f'配置{ds_conf_path}加载成功！！！！！！！！！！！！！！！！！！！！')
