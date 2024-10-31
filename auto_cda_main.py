@@ -21,4 +21,5 @@ if __name__ == '__main__':
 
     # 数据处理.
     data_processor = DataProcessor()
-    data_processor.process(data)
+    data = data_processor.process(data)
+    print('')

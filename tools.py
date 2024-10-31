@@ -1,6 +1,7 @@
 import logging
 import yaml
 from typing import Any
+import xml.etree.ElementTree as ET
 
 logger = logging.getLogger('auto_cda_logger')
 logger.setLevel(logging.INFO)
@@ -43,14 +44,13 @@ class DataProcessorConf(Configuration):
 
 
 def get_fields(sub_conf, conf_name, data_columns):
-    fields_conf = sub_conf.get(conf_name)
+    fields_conf = sub_conf.get(conf_name) if sub_conf.get(conf_name) else []
     fields_list = []
-    if fields_conf:
-        for col in set([field.strip() for field in fields_conf.strip().split(',')]):
-            if col in data_columns:
-                fields_list.append(col)
-            else:
-                raise Exception(f"配置{conf_name}错误，不存在字段{col}")
+    for col in fields_conf:
+        if col in data_columns:
+            fields_list.append(col)
+        else:
+            raise Exception(f"配置{conf_name}错误，不存在字段{col}")
 
     return fields_list
 
@@ -65,3 +65,14 @@ data_source_conf = conf.get('data_source')
 data_splitter_conf = conf.get('data_splitter')
 data_processor_conf = conf.get('data_processor')
 logger.info(f'配置{ds_conf_path}加载成功！！！！！！！！！！！！！！！！！！！！')
+
+from lxml import etree
+#
+# # 解析XML
+# ds_conf_path = r'conf/ml_config.xml'  # 配置文件路径.
+# tree = etree.parse(ds_conf_path)
+# root = tree.getroot()
+# data_processor = root.xpath('//data_processor')
+#
+# field_encoder = data_processor.find('field_encoder')
+# print(field_encoder)

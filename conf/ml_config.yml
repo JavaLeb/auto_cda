@@ -10,8 +10,8 @@ data_source:
 
 data_explorer:
   head_num: 10  # 打印数据的前多少行.
-  class_fields:   # 类别字段配置，如果配置了该字段，c_fields_ratio、unique_class_num配置失效.
-  text_fields:  # 文本字段，该配置字段和object类型字段判定为文本字段.
+  class_fields:  [] # 类别字段配置，如果配置了该字段，c_fields_ratio、unique_class_num配置失效.
+  text_fields: [] # 文本字段，该配置字段和object类型字段判定为文本字段.
   class_fields_ratio: 0.02  # 判断类别字段的阈值，列的不同值占总行数的比例不大于该值被判定为类别字段.
   unique_class_num: 20  # 判断类别字段的阈值. 列的不同值不大于该值，才认为是类别字段.
   show_hist_plot: false
@@ -28,7 +28,24 @@ data_splitter:
   k: 5
 
 data_processor:
-  # 对有序类别进行编码，填写字段名称，多个字段以英文逗号“,”分隔.
-  ordinal_encoder_fields: ocean_proximity
-  # 对无序类别进行编码，填写字段名称，多个字段以英文逗号","分隔.
-  one_hot_encoder_fields: ocean_proximity
+  # 字段选择.
+  field_selection:
+    # 配置需要删除的字段.
+    drop_fields: [ longitude,latitude,housing_median_age ]
+
+  field_cleaner:
+      # 缺失值清洗.
+      na_cleaner:
+        - field_name: total_bedrooms # 待清洗的字段名称.
+          clean_method : drop_na  # 对缺失值处理. drop、drop_na、fill。drop: 删除列。drop_na: 删除缺失值的行，fill：填充趋势值.
+          method: mean  # 常数值（const）、均值（mean）、中位数（median）、众数（mode）
+          value:  # 填充的值，当method=const时生效.
+
+  # 字段编码.
+  field_encoder:
+    - field_name:
+      encoder:
+        name:   # 编码名称，支持ordinal、one_hot。ordinal: 对字段惊醒有序编码、one_hot：对字段进行独热编码.
+    - field_name:
+      encoder:
+        name:
