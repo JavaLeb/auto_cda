@@ -2,7 +2,7 @@ import pandas as pd
 
 from tools import data_processor_conf, get_fields
 from pandas import DataFrame
-from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler, MinMaxScaler
 from typing import List
 
 # 配置.
@@ -22,6 +22,7 @@ class DataProcessor:
         data = self.select_field(data, [])
         data = self.encode_field(data)
         data = self.clean_field(data)
+        data = self.scale_field(data)
 
         return data
 
@@ -40,34 +41,35 @@ class DataProcessor:
     def clean_na_field(self, data: DataFrame = None):
         na_cleaner_list = data_processor_conf.get('field_cleaner').get('na_cleaner')
         for na_cleaner in na_cleaner_list:
-            field_name = na_cleaner.get('field_name')
+            field_name_list = na_cleaner.get('field_name')
             clean_method = na_cleaner.get('clean_method')
             method = na_cleaner.get('method')
             value = na_cleaner.get('value')
-            if field_name in data.columns:
-                if clean_method == 'drop':
-                    data = data.drop([field_name], axis=1)
-                elif clean_method == 'drop_na':
-                    data.dropna(subset=[field_name], inplace=True)
-                elif clean_method == 'fill':
-                    if method == 'const' and value:
-                        data[field_name] = value
-                    elif method == 'mean':
-                        mean = data[field_name].mean()
-                        data[field_name].fillna(mean, inplace=True)
-                    elif method == 'median':
-                        median = data[field_name].median()
-                        data[field_name].fillna(median, inplace=True)
-                    elif method == 'mode':
-                        mode = data[field_name].mode()
-                        data[field_name].fillna(mode, inplace=True)
+            for field_name in field_name_list:
+                if field_name in data.columns:
+                    if clean_method == 'drop':
+                        data = data.drop([field_name], axis=1)
+                    elif clean_method == 'drop_na':
+                        data.dropna(subset=[field_name], inplace=True)
+                    elif clean_method == 'fill':
+                        if method == 'const' and value:
+                            data[field_name] = value
+                        elif method == 'mean':
+                            mean = data[field_name].mean()
+                            data[field_name] = data[field_name].fillna(mean)
+                        elif method == 'median':
+                            median = data[field_name].median()
+                            data[field_name] = data[field_name].fillna(median)
+                        elif method == 'mode':
+                            mode = data[field_name].mode()
+                            data[field_name] = data[field_name].fillna(mode)
+                        else:
+                            raise Exception(f"暂时不支持的填充方式{method}，请正确配置")
                     else:
-                        raise Exception(f"暂时不支持的填充方式{method}，请正确配置")
+                        raise Exception(f'暂时不支持的数据清洗方式{clean_method}，请正确配置')
                 else:
-                    raise Exception(f'暂时不支持的数据清洗方式{clean_method}，请正确配置')
-            else:
-                if field_name:
-                    raise Exception(f'清洗的字段名称{field_name}不存在，请正确配置。')
+                    if field_name:
+                        raise Exception(f'清洗的字段名称{field_name}不存在，请正确配置。')
 
         return data
 
@@ -95,4 +97,24 @@ class DataProcessor:
                 data = data.drop(field_name, axis=1)
                 data[columns] = pd.DataFrame(data=one_hot_encoded_data, columns=columns)
 
+        return data
+
+    def scale_field(self, data: DataFrame = None) -> DataFrame:
+        # 获取配置的编码字段.
+        field_scaler_list = data_processor_conf.get('field_scaler')
+        for field_scaler in field_scaler_list:
+            field_name_list = field_scaler.get('field_name')
+            scaler_name = field_scaler.get('scaler').get('name')
+            for field_name in field_name_list:
+                if field_name in data.columns:
+                    if scaler_name == 'min_max':
+                        min_max_scaler = MinMaxScaler(feature_range=(-1, 1))
+                        min_max_scaled_data = min_max_scaler.fit_transform(data[[field_name]])
+                        data[field_name] = pd.DataFrame(data=min_max_scaled_data, columns=[field_name])
+                    elif scaler_name == 'standard':
+                        standard_scaler = StandardScaler()
+                        standard_scaled_data = standard_scaler.fit_transform(data[[field_name]])
+                        data[field_name] = pd.DataFrame(data=standard_scaled_data, columns=[field_name])
+                    else:
+                        raise Exception(f'咱不支持的字段缩放器{scaler_name}')
         return data

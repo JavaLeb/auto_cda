@@ -31,21 +31,26 @@ data_processor:
   # 字段选择.
   field_selection:
     # 配置需要删除的字段.
-    drop_fields: [ longitude,latitude,housing_median_age ]
+    drop_fields: [  ]
 
   field_cleaner:
       # 缺失值清洗.
       na_cleaner:
-        - field_name: total_bedrooms # 待清洗的字段名称.
-          clean_method : drop_na  # 对缺失值处理. drop、drop_na、fill。drop: 删除列。drop_na: 删除缺失值的行，fill：填充趋势值.
+        - field_name: [total_bedrooms] # 待清洗的字段名称列表.
+          clean_method : fill  # 对缺失值处理. drop、drop_na、fill。drop: 删除列。drop_na: 删除缺失值的行，fill：填充缺失值.
           method: mean  # 常数值（const）、均值（mean）、中位数（median）、众数（mode）
           value:  # 填充的值，当method=const时生效.
 
   # 字段编码.
   field_encoder:
-    - field_name:
+    - field_name: []
       encoder:
-        name:   # 编码名称，支持ordinal、one_hot。ordinal: 对字段惊醒有序编码、one_hot：对字段进行独热编码.
-    - field_name:
+        name:   # 编码名称，支持ordinal、one_hot。ordinal: 对字段进行有序编码、one_hot：对字段进行独热编码.
+    - field_name: []
       encoder:
         name:
+
+  field_scaler:
+    - field_name: []
+      scaler:
+        name: standard # min_max、standard

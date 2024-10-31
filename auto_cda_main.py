@@ -22,4 +22,7 @@ if __name__ == '__main__':
     # 数据处理.
     data_processor = DataProcessor()
     data = data_processor.process(data)
+
+    data_explorer = DataExplorer(data)
+    data_explorer.explore()
     print('')
