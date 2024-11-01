@@ -6,7 +6,8 @@ data_source:
   format: txt # 文件的格式（支持excel、txt、csv）
   field_sep: ',' # 字段（属性、特征）之间的分隔符.
   #  path: 'E:\pycharm_workspace\cda\d2l\data\house-prices-advanced-regression-techniques\train.csv'
-  path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
+  train_path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
+  test_path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
   #  path: 'E:\pycharm_workspace\auto_cda\data\sina_train.csv'
   #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
   header: 0 # 标题行.
@@ -43,6 +44,7 @@ data_splitter:
   params:
     n_splits: 5
     shuffle: True
+    random_state: 42
 
 
 # ================================================================================================
@@ -116,11 +118,11 @@ data_modeler:
   models:
     - estimator: sklearn.ensemble.RandomForestRegressor
       param_grid:
-        n_estimators: [ 50,100 ]
-        max_depth: [ 1,2 ]
+        n_estimators: [ 50]
+        max_depth: [ 3 ]
     - estimator: sklearn.linear_model.LinearRegression
       param_grid:
     - estimator: sklearn.tree.DecisionTreeRegressor
       param_grid:
   fine_tune: GridSearchCV
-  assessments: [ root_mean_squared_error ]
+  assessments: [ root_mean_squared_error,mean_squared_error ]

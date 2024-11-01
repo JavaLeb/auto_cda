@@ -25,22 +25,25 @@ class DataModeler:
         for model in models:
             model_name = model.get('estimator')
             params = model.get('param_grid')
+            self._params.append(params)
             if '.' not in model_name:
                 module_path = 'sklearn.linear_model.' + str(model_name)
             else:
                 module_path = model_name
-            model_cls = instantiate_class(module_path)
-            model['estimator'] = model_cls
-            self._models.append(model_cls)
-            self._params.append(params)
-            if params:
-                self._fine_tune.append(instantiate_class(fine_tune_path, **model))
-            else:
-                self._fine_tune.append(model_cls)
-        self._assessments = data_modeler_conf.get('assessments')
 
+            model_cls = instantiate_class(module_path)  # 普通模型.
+            if params:
+                model['estimator'] = model_cls
+                model_cls = instantiate_class(fine_tune_path, **model)  # 可调优的模型.
+                self._models.append(model_cls)
+                self._fine_tune.append(model_cls)
+            else:
+                self._models.append(model_cls)
+        self._assessments = data_modeler_conf.get('assessments')
         self._summary = DataFrame()
-        self._summary['model'] = self._fine_tune
+        self._summary['model'] = self._models
+        self._best_model = []
+        self._final_best_model = None
 
     def model(self, train_data: DataFrame = None, valid_data: DataFrame = None):
 
@@ -53,8 +56,12 @@ class DataModeler:
         # todo 可以使用多线程优化.
         train_assess = []
         valid_assess = []
-        for model in self._fine_tune:
+        for model in self._models:
             model.fit(train_feature_data, train_target_data.ravel())
+            if model in self._fine_tune:
+                self._best_model.append(model.best_params_)
+            else:
+                self._best_model.append(model)
             train_prediction_data = model.predict(train_feature_data)
             valid_prediction_data = model.predict(valid_feature_data)
             train_assess_list = []
@@ -68,10 +75,27 @@ class DataModeler:
                 valid_assess_list.append(valid_assess_result)
             train_assess.append(train_assess_list)
             valid_assess.append(valid_assess_list)
-
+        self._summary['best_model_param'] = self._best_model
         train_summary = pd.DataFrame(data=train_assess, columns=['train-' + str(a) for a in self._assessments])
         valid_summary = pd.DataFrame(data=valid_assess, columns=['valid-' + str(a) for a in self._assessments])
-        self._summary = pd.concat([self._summary, train_summary, valid_summary], axis=1)
+        min_indices = valid_summary.idxmin()
+
+        self._summary = pd.concat([self._summary, valid_summary], axis=1)
+        best_model_summary = self._summary.iloc[min_indices]
+        self._summary = pd.concat([self._summary, train_summary], axis=1)
         print_with_sep_line('数据模型摘要：\n', self._summary.to_markdown())
 
-    # def best_model(self):
+        print_with_sep_line('最佳数据模型摘要：\n', best_model_summary.to_markdown())
+
+        self._final_best_model = [self._models[i] for i in list(set(min_indices))]
+        print_with_sep_line('最佳模型：\n', self._final_best_model)
+
+        import joblib
+        for best_model in self._final_best_model:
+            # 模型保存
+            joblib.dump(best_model, f'model/{best_model}.pkl')
+
+
+
+    def best_model(self):
+        pass

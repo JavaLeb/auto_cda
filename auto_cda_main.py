@@ -5,9 +5,7 @@ from data_splitter import DataSplitter
 from data_processor import DataProcessor
 from data_modeler import DataModeler
 
-
 if __name__ == '__main__':
-
     # 数据读取
     data_reader = DataReader(ds_type='file')
     data = data_reader.read()
@@ -28,4 +26,12 @@ if __name__ == '__main__':
 
     data_modeler = DataModeler()
     data_modeler.model(train_data, valid_data)
-    print('')
+
+    # import joblib
+    #
+    # # 模型加载
+    # loaded_model = joblib.load(f'model/*')
+    # y_pred_loaded = loaded_model.predict(X_test)
+    # print("Loaded Model Predictions:", y_pred_loaded)
+
+    print('调试')
