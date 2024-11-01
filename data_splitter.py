@@ -1,58 +1,60 @@
-from sklearn.model_selection import train_test_split, KFold
+import numpy as np
+from sklearn.model_selection import KFold, train_test_split, LeavePOut, LeaveOneOut
+
 from data_configuration import data_splitter_conf
 from pandas import DataFrame
-from tools import print_with_sep_line
+from tools import print_with_sep_line, instantiate_class
 import pandas as pd
+from operator import methodcaller
+from sklearn import model_selection
 
-TRAIN_SIZE = 'train_size'
-K = 'k'
 SIMPLE = 'simple'
-K_FOLD = 'k_fold'
 
 
 class DataSplitter:
-    def __init__(self, split_type: str = 'simple') -> None:
-        self._split_type = split_type
+    def __init__(self, split_type: str = None) -> None:
+        if split_type:
+            self._split_type = split_type
+        else:
+            self._split_type = data_splitter_conf.get('splitter')
         self._train_data_list = []
         self._valid_data_list = []
         self._summary = DataFrame()
         self._summary['split_type'] = [split_type]
         self._data = None
+        self._params = data_splitter_conf.get('params')
+        for param_name, param_value in self._params.items():
+            if param_name and param_value:
+                self._summary[param_name] = param_value
+            else:
+                raise Exception(f"未配置参数名{param_name}或参数值{param_value}")
 
     def split(self, data: DataFrame = None):
         self._data = data.values
         self._summary['total_count'] = len(data)
         if self._split_type == SIMPLE:
-            train_size = data_splitter_conf.get(TRAIN_SIZE)
-            if train_size:
-                self._summary['train_size'] = train_size
-            else:
-                raise Exception("未配置train_size")
-            train_data, valid_data = train_test_split(data, train_size=train_size, random_state=42)
-
+            split_method = methodcaller('train_test_split', self._data, **self._params)
+            train_data, valid_data = split_method(model_selection)
             train_data = pd.DataFrame(data=train_data, columns=data.columns)
             valid_data = pd.DataFrame(data=valid_data, columns=data.columns)
             self._train_data_list.append(train_data)
             self._valid_data_list.append(valid_data)
             self._summary['train_count'] = len(train_data)
             self._summary['valid_count'] = len(valid_data)
-
-        elif self._split_type == K_FOLD:
-            n_splits = data_splitter_conf.get(K)
-            self._summary['K'] = n_splits
-            kf = KFold(n_splits=n_splits)  # 初始化K这交叉验证器.
+        elif self._split_type:
+            cls = instantiate_class('sklearn.model_selection.' + self._split_type, **self._params)
             train_count = []
             valid_count = []
-            for train_index, valid_index in kf.split(data):
-                train_data, valid_data = data[train_index], data[valid_index]
+            for train_index, valid_index in cls.split(self._data):
+                train_data, valid_data = self._data[train_index], self._data[valid_index]
                 train_data = pd.DataFrame(data=train_data, columns=data.columns)
                 valid_data = pd.DataFrame(data=valid_data, columns=data.columns)
                 self._train_data_list.append(train_data)
                 self._valid_data_list.append(valid_data)
                 train_count.append(len(train_data))
                 valid_count.append(len(valid_data))
-            self._summary['train_count'] = train_count
-            self._summary['valid_count'] = valid_count
+            self._summary['train_count'] = np.mean(train_count)
+            self._summary['valid_count'] = np.mean(valid_count)
         else:
             raise Exception(f"不支持的数据切分方式{self._split_type}")
         self.print_summary()

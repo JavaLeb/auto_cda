@@ -2,11 +2,11 @@
 # 数据源配置.
 # ================================================================================================
 data_source:
-  type: 'file' #数据源类型
-  format: 'txt' # 文件的格式（支持excel、txt、csv）
+  type: file #数据源类型
+  format: txt # 文件的格式（支持excel、txt、csv）
   field_sep: ',' # 字段（属性、特征）之间的分隔符.
   #  path: 'E:\pycharm_workspace\cda\d2l\data\house-prices-advanced-regression-techniques\train.csv'
-  path: 'E:\pycharm_workspace\auto_cda\data\housing\housing.csv'
+  path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
   #  path: 'E:\pycharm_workspace\auto_cda\data\sina_train.csv'
   #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
   header: 0 # 标题行.
@@ -20,19 +20,30 @@ data_explorer:
   text_fields: [ ] # 文本字段，该配置字段和object类型字段判定为文本字段.
   class_fields_ratio: 0.02  # 判断类别字段的阈值，列的不同值占总行数的比例不大于该值被判定为类别字段.
   unique_class_num: 20  # 判断类别字段的阈值. 列的不同值不大于该值，才认为是类别字段.
-  show_hist_plot: false
+  show_hist_plot: false # 展示字段不同值的直方图分布.
   show_relation_plot: false # 展示相关性矩阵热力图.
 
 
 # ================================================================================================
 # 数据切分器配置
+# splitter:
+#   配置数据切分器，目前支持simple、KFold、LeaveOneOut、LeavePOut.
+#   simple：简单交叉验证.
+#   KFold：K折交叉验证.
+#   LeaveOneOut：留一法交叉验证.
+#   LeavePOut：留P法交叉验证.
+# params:
+#   配置切分器参数，例如：train_size: 0.7, test_size: 0.3.
+#   simple: 可配置参数：train_size=0.7, test_size=0.4, random_state=0, shuffle=False
+#   KFold: 可配置参数：n_splits=5, shuffle=False.
+#   LeavePOut：可配置参数：p=1.
 # ================================================================================================
 data_splitter:
-  type: simple # 简单交叉验证（simple）、K折交叉验证（k_fold）、留一法交叉验证（LOO）、留P法交叉验证（LPO）.
-  train_size: 0.7
+  splitter: KFold
+  params:
+    n_splits: 5
+    shuffle: True
 
-  #  type: k_fold
-  k: 5
 
 # ================================================================================================
 # 数据处理器配置
@@ -63,7 +74,7 @@ data_processor:
 
   # ------------------------------------------------------------------
   # 字段编码器配置：
-  #   对字段进行编码，例如：对字段的所有值进行独特编码.
+  #   对字段进行编码，例如：对字段的所有值进行独热编码.
   # fields:
   #   配置需要进行编码的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
   # name:
@@ -73,9 +84,6 @@ data_processor:
     - fields: [ ocean_proximity ]
       encoder:
         name: one_hot
-    - fields: [ ]
-      encoder:
-        name:
 
   # ------------------------------------------------------------------
   # 字段转换器配置：
@@ -91,19 +99,28 @@ data_processor:
     - fields: [ longitude,latitude,housing_median_age,total_rooms,total_bedrooms,population,households,median_income ]
       transformers:
         - name: StandardScaler
-        - name:
-    - fields: [ ]
-      transformers:
-        - name:
-        - name:
 
 # ================================================================================================
 # 数据模型配置.
-# assess:
+# target_fields：
+#     配置目标字段.
+# models:
+#     配置模型.
+# assessments:
+#     评估方法配置，多个评估方法，使用英文逗号","分隔，例如：[mean_squared_error,root_mean_squared_error]
 #     mean_squared_error
 #     root_mean_squared_error
 # ================================================================================================
 data_modeler:
   target_fields: [ median_house_value ]
-  models: [ sklearn.linear_model.LinearRegression,sklearn.tree.DecisionTreeRegressor ]
-  assessments: [ mean_squared_error,root_mean_squared_error ]
+  models:
+    - estimator: sklearn.ensemble.RandomForestRegressor
+      param_grid:
+        n_estimators: [ 50,100 ]
+        max_depth: [ 1,2 ]
+    - estimator: sklearn.linear_model.LinearRegression
+      param_grid:
+    - estimator: sklearn.tree.DecisionTreeRegressor
+      param_grid:
+  fine_tune: GridSearchCV
+  assessments: [ root_mean_squared_error ]

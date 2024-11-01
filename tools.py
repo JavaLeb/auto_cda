@@ -27,7 +27,7 @@ def get_fields(sub_conf, conf_name, data_columns):
 import importlib
 
 
-def instantiate_class(class_path):
+def instantiate_class(class_path, **params):
     """
 
     :param class_path: 必须全路径.
@@ -40,8 +40,11 @@ def instantiate_class(class_path):
     # 获取类
     class_ = getattr(module, class_name)
     # 实例化类
-    instant = class_()
     if class_name == 'MinMaxScaler':
         instant = class_(feature_range=(-1, 1))
+    elif params:
+        instant = class_(**params)
+    else:
+        instant = class_()
 
     return instant
