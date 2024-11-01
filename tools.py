@@ -55,6 +55,24 @@ def get_fields(sub_conf, conf_name, data_columns):
     return fields_list
 
 
+import importlib
+
+
+def instantiate_class(class_path):
+    # 分割类的完整路径
+    if '.' in class_path:
+        module_path, class_name = class_path.rsplit('.', 1)
+    else:
+        module_path, class_name = 'sklearn.preprocessing', class_path
+    # 导入模块
+    module = importlib.import_module(module_path)
+    # 获取类
+    class_ = getattr(module, class_name)
+    # 实例化类
+
+    return class_()
+
+
 # 配置加载.
 ds_conf_path = r'conf/ml_config.yml'  # 配置文件路径.
 logger.info(f'开始加载配置{ds_conf_path}....................')

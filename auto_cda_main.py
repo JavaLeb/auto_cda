@@ -15,6 +15,7 @@ if __name__ == '__main__':
     # data_splitter = DataSplitter(split_type='simple')
     # train_data_list, valid_data_list = data_splitter.split(data)
     # data = train_data_list[0]
+
     # 数据探索.
     data_explorer = DataExplorer(data)
     data_explorer.explore()

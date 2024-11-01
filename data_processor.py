@@ -1,9 +1,14 @@
 import pandas as pd
+import sklearn.preprocessing
 
-from tools import data_processor_conf, get_fields
+from tools import data_processor_conf, get_fields,instantiate_class
 from pandas import DataFrame
 from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler, MinMaxScaler
 from typing import List
+
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 
 # 配置.
 ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
@@ -22,7 +27,7 @@ class DataProcessor:
         data = self.select_field(data, [])
         data = self.encode_field(data)
         data = self.clean_field(data)
-        data = self.scale_field(data)
+        data = self.transform_field(data)
 
         return data
 
@@ -99,22 +104,23 @@ class DataProcessor:
 
         return data
 
-    def scale_field(self, data: DataFrame = None) -> DataFrame:
+    def transform_field(self, data: DataFrame = None) -> DataFrame:
         # 获取配置的编码字段.
-        field_scaler_list = data_processor_conf.get('field_scaler')
-        for field_scaler in field_scaler_list:
-            field_name_list = field_scaler.get('field_name')
-            scaler_name = field_scaler.get('scaler').get('name')
-            for field_name in field_name_list:
-                if field_name in data.columns:
-                    if scaler_name == 'min_max':
-                        min_max_scaler = MinMaxScaler(feature_range=(-1, 1))
-                        min_max_scaled_data = min_max_scaler.fit_transform(data[[field_name]])
-                        data[field_name] = pd.DataFrame(data=min_max_scaled_data, columns=[field_name])
-                    elif scaler_name == 'standard':
-                        standard_scaler = StandardScaler()
-                        standard_scaled_data = standard_scaler.fit_transform(data[[field_name]])
-                        data[field_name] = pd.DataFrame(data=standard_scaled_data, columns=[field_name])
-                    else:
-                        raise Exception(f'咱不支持的字段缩放器{scaler_name}')
+        field_transformer_list = data_processor_conf.get('field_transformer')
+        for field_transformer in field_transformer_list:
+            fields = field_transformer.get('fields')
+            if not fields:
+                break
+            transformers = field_transformer.get('transformers')
+            steps = []
+            for transformer in transformers:
+                transformer_name = transformer.get('name')
+                cls = instantiate_class(transformer_name)
+                steps.append((transformer_name, cls))
+            # 使用pipeline.
+            pipeline = Pipeline(steps)
+
+            transformed_data = pipeline.fit_transform(data[fields])
+            data[fields] = pd.DataFrame(data=transformed_data, columns=fields)
+
         return data
