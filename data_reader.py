@@ -1,7 +1,7 @@
 import pandas as pd
 from pandas import DataFrame
 from tools import logger
-from tools import data_source_conf
+from data_configuration import data_source_conf
 
 
 class DataReader:

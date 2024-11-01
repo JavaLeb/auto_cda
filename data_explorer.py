@@ -1,4 +1,5 @@
-from tools import data_explorer_conf, print_with_sep_line, get_fields
+from data_configuration import data_explorer_conf
+from tools import print_with_sep_line, get_fields
 import pandas as pd
 from pandas import DataFrame
 import matplotlib.pyplot as plt

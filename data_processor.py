@@ -1,14 +1,12 @@
 import pandas as pd
-import sklearn.preprocessing
 
-from tools import data_processor_conf, get_fields,instantiate_class
+from data_configuration import data_processor_conf
+from tools import get_fields, instantiate_class
 from pandas import DataFrame
-from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler, MinMaxScaler
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler
 from typing import List
 
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
 
 # 配置.
 ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
@@ -46,7 +44,7 @@ class DataProcessor:
     def clean_na_field(self, data: DataFrame = None):
         na_cleaner_list = data_processor_conf.get('field_cleaner').get('na_cleaner')
         for na_cleaner in na_cleaner_list:
-            field_name_list = na_cleaner.get('field_name')
+            field_name_list = na_cleaner.get('fields')
             clean_method = na_cleaner.get('clean_method')
             method = na_cleaner.get('method')
             value = na_cleaner.get('value')
@@ -88,19 +86,22 @@ class DataProcessor:
         field_encoder_list = data_processor_conf.get('field_encoder')
         # 根据字段编码配置不同，进行不同形式的编码.
         for field_encoder in field_encoder_list:
-            field_name = field_encoder.get('field_name')
+            fields = field_encoder.get('fields')
             encoder_name = field_encoder.get('encoder').get('name')
-            if encoder_name == 'ordinal':
-                ordinal_encoder = OrdinalEncoder()
-                ordinal_encoded_data = ordinal_encoder.fit_transform(data[[field_name]])
-                data[field_name] = ordinal_encoded_data
-            elif encoder_name == 'one_hot':
-                one_hot_encoder = OneHotEncoder(sparse_output=False)
-                one_hot_encoded_data = one_hot_encoder.fit_transform(data[[field_name]])
-                # 构建新的列名称.
-                columns = [str(field_name) + '_' + str(i) for i in range(one_hot_encoded_data.shape[1])]
-                data = data.drop(field_name, axis=1)
-                data[columns] = pd.DataFrame(data=one_hot_encoded_data, columns=columns)
+            if not fields:
+                break
+            for field in fields:
+                if encoder_name == 'ordinal':
+                    ordinal_encoder = OrdinalEncoder()
+                    ordinal_encoded_data = ordinal_encoder.fit_transform(data[[field]])
+                    data[field] = ordinal_encoded_data
+                elif encoder_name == 'one_hot':
+                    one_hot_encoder = OneHotEncoder(sparse_output=False)
+                    one_hot_encoded_data = one_hot_encoder.fit_transform(data[[field]])
+                    # 构建新的列名称.
+                    columns = [str(field) + '_' + str(i) for i in range(one_hot_encoded_data.shape[1])]
+                    data = data.drop(field, axis=1)
+                    data[columns] = pd.DataFrame(data=one_hot_encoded_data, columns=columns)
 
         return data
 
@@ -115,11 +116,16 @@ class DataProcessor:
             steps = []
             for transformer in transformers:
                 transformer_name = transformer.get('name')
-                cls = instantiate_class(transformer_name)
+                if not transformer_name:
+                    break
+                if '.' not in transformer_name:
+                    module_path = 'sklearn.preprocessing.' + str(transformer_name)
+                else:
+                    module_path = transformer_name
+                cls = instantiate_class(module_path)
                 steps.append((transformer_name, cls))
             # 使用pipeline.
             pipeline = Pipeline(steps)
-
             transformed_data = pipeline.fit_transform(data[fields])
             data[fields] = pd.DataFrame(data=transformed_data, columns=fields)
 

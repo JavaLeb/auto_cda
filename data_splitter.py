@@ -1,5 +1,5 @@
 from sklearn.model_selection import train_test_split, KFold
-from tools import data_splitter_conf
+from data_configuration import data_splitter_conf
 from pandas import DataFrame
 from tools import print_with_sep_line
 import pandas as pd
