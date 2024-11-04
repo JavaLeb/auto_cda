@@ -3,7 +3,7 @@ from sklearn.model_selection import KFold, train_test_split, LeavePOut, LeaveOne
 
 from data_configuration import data_splitter_conf
 from pandas import DataFrame
-from tools import print_with_sep_line, instantiate_class
+from tools import print_with_sep_line, instantiate_class,logger
 import pandas as pd
 from operator import methodcaller
 from sklearn import model_selection
@@ -20,7 +20,7 @@ class DataSplitter:
         self._train_data_list = []
         self._valid_data_list = []
         self._summary = DataFrame()
-        self._summary['split_type'] = [split_type]
+        self._summary['splitter'] = [self._split_type]
         self._data = None
         self._params = data_splitter_conf.get('params')
         for param_name, param_value in self._params.items():
@@ -30,6 +30,7 @@ class DataSplitter:
                 raise Exception(f"未配置参数名{param_name}或参数值{param_value}")
 
     def split(self, data: DataFrame = None):
+        logger.info('开始数据切分....................')
         self._data = data.values
         self._summary['total_count'] = len(data)
         if self._split_type == SIMPLE:
@@ -58,7 +59,7 @@ class DataSplitter:
         else:
             raise Exception(f"不支持的数据切分方式{self._split_type}")
         self.print_summary()
-
+        logger.info('数据切分完成！！！！！！！！！！！！！！！！！！！！！！')
         return self._train_data_list, self._valid_data_list
 
     def print_summary(self):

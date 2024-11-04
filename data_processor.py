@@ -23,8 +23,8 @@ class DataProcessor:
 
     def process(self, data: DataFrame = None) -> DataFrame:
         data = self.select_field(data, [])
-        data = self.encode_field(data)
         data = self.clean_field(data)
+        data = self.encode_field(data)
         data = self.transform_field(data)
 
         return data
@@ -44,11 +44,12 @@ class DataProcessor:
     def clean_na_field(self, data: DataFrame = None):
         na_cleaner_list = data_processor_conf.get('field_cleaner').get('na_cleaner')
         for na_cleaner in na_cleaner_list:
-            field_name_list = na_cleaner.get('fields')
+            fields = na_cleaner.get('fields')
+            fields = list(set(data.columns) & set(fields))
             clean_method = na_cleaner.get('clean_method')
             method = na_cleaner.get('method')
             value = na_cleaner.get('value')
-            for field_name in field_name_list:
+            for field_name in fields:
                 if field_name in data.columns:
                     if clean_method == 'drop':
                         data = data.drop([field_name], axis=1)
@@ -87,6 +88,7 @@ class DataProcessor:
         # 根据字段编码配置不同，进行不同形式的编码.
         for field_encoder in field_encoder_list:
             fields = field_encoder.get('fields')
+            fields = list(set(fields) & set(data.columns))
             encoder_name = field_encoder.get('encoder').get('name')
             if not fields:
                 break
@@ -110,6 +112,7 @@ class DataProcessor:
         field_transformer_list = data_processor_conf.get('field_transformer')
         for field_transformer in field_transformer_list:
             fields = field_transformer.get('fields')
+            fields = list(set(fields) & set(data.columns))
             if not fields:
                 break
             transformers = field_transformer.get('transformers')

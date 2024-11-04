@@ -14,15 +14,31 @@ data_source:
 
 # ================================================================================================
 # 数据探索配置.
+#   head_num:
+#       打印数据的前多少行.
+#   class_fields：
+#       类别字段配置. 如果配置了类别字段，这些字段将被认定为是类别字段，其余字段为非类别字段.
+#       如果配置了类别字段，field_unique_ratio和field_unique_num失效.
+#   value_fields:
+#       数值字段配置. 如果配置了数值字段，这些字段将被认定为数值字段，其余字段为非类别字段.
+#   object_fields:
+#       对象字段配置. 如果配置了该类别字段，这些字段将被认定为对象字段，其余字段为非对象字段.
+#       非类别字段和数值字段都将被认定为是对象字段，例如文本型的字段.
+#   field_unique_ratio:
+#       字段唯一值个数占总行数的比例，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
+#   field_unique_num
+#       字段唯一值个数，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
+#   explore_hist:
+#       是否探索数据的直方图分布，取值true和false.
+#   explore_relation
+#       是否数据的相关性，取值true和false.
 # ================================================================================================
 data_explorer:
-  head_num: 10  # 打印数据的前多少行.
-  class_fields: [ ] # 类别字段配置，如果配置了该字段，c_fields_ratio、unique_class_num配置失效.
-  text_fields: [ ] # 文本字段，该配置字段和object类型字段判定为文本字段.
-  class_fields_ratio: 0.02  # 判断类别字段的阈值，列的不同值占总行数的比例不大于该值被判定为类别字段.
-  unique_class_num: 20  # 判断类别字段的阈值. 列的不同值不大于该值，才认为是类别字段.
-  show_hist_plot: false # 展示字段不同值的直方图分布.
-  show_relation_plot: false # 展示相关性矩阵热力图.
+  head_num: 10
+  field_unique_ratio: 0.001
+  field_unique_num: 100
+  explore_hist: false
+  explore_relation: false
 
 
 # ================================================================================================
@@ -35,16 +51,17 @@ data_explorer:
 #   LeavePOut：留P法交叉验证.
 # params:
 #   配置切分器参数，例如：train_size: 0.7, test_size: 0.3.
-#   simple: 可配置参数：train_size=0.7, test_size=0.4, random_state=0, shuffle=False
+#   simple: 可配置参数：train_size=0.7, test_size=0.4, random_state=0, shuffle=False.
+#           train_size也可以配置整数，表示样本个数.
 #   KFold: 可配置参数：n_splits=5, shuffle=False.
 #   LeavePOut：可配置参数：p=1.
 # ================================================================================================
 data_splitter:
-  splitter: KFold
+  splitter: simple
   params:
-    n_splits: 5
-    shuffle: True
-    random_state: 42
+    train_size: 1000
+#    shuffle: True
+#    random_state: 42
 
 
 # ================================================================================================
@@ -105,24 +122,46 @@ data_processor:
 # ================================================================================================
 # 数据模型配置.
 # target_fields：
-#     配置目标字段.
+#     配置目标字段，如果未配置目标字段，数据中的最后一个字段认定为是目标字段.
 # models:
 #     配置模型.
+#   estimator:
+#        模型，支持SVC.
+#   param_grid:
+#        配置模型参数.
+#   fine_tune:
+#     GridSearchCV（网格搜索）、（随机搜索）
 # assessments:
-#     评估方法配置，多个评估方法，使用英文逗号","分隔，例如：[mean_squared_error,root_mean_squared_error]
-#     mean_squared_error
-#     root_mean_squared_error
+#     评估方法配置.支持sklearn.metrics中如下评估方式：
+#     回归指标.
+#        mean_squared_error
+#       root_mean_squared_error
+#     分类指标：
+#       accuracy_score
+#       precision_score
+#       recall_score
+#       f1_score
+#       classification_report
 # ================================================================================================
 data_modeler:
   target_fields: [ median_house_value ]
   models:
-    - estimator: sklearn.ensemble.RandomForestRegressor
-      param_grid:
-        n_estimators: [ 50]
-        max_depth: [ 3 ]
-    - estimator: sklearn.linear_model.LinearRegression
-      param_grid:
-    - estimator: sklearn.tree.DecisionTreeRegressor
-      param_grid:
+    - estimator: SVC
+      param_grid: [ ]
   fine_tune: GridSearchCV
-  assessments: [ root_mean_squared_error,mean_squared_error ]
+  assessments:
+    - name: accuracy_score
+      min_max: max
+      params:
+    - name: precision_score
+      min_max: max
+      params: { average: micro }
+    - name: f1_score
+      min_max: max
+      params: { average: micro }
+    - name: recall_score
+      min_max: max
+      params: { average: micro }
+    - name: classification_report
+      min_max: max
+      params:
