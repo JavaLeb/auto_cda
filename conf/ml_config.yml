@@ -47,6 +47,7 @@ data_explorer:
 #   配置数据切分器，目前支持simple、KFold、LeaveOneOut、LeavePOut.
 #   simple：简单交叉验证.
 #   KFold：K折交叉验证.
+#   StratifiedKFold：分层K折交叉验证.
 #   LeaveOneOut：留一法交叉验证.
 #   LeavePOut：留P法交叉验证.
 # params:
@@ -54,6 +55,7 @@ data_explorer:
 #   simple: 可配置参数：train_size=0.7, test_size=0.4, random_state=0, shuffle=False.
 #           train_size也可以配置整数，表示样本个数.
 #   KFold: 可配置参数：n_splits=5, shuffle=False.
+#   StratifiedKFold：可配置参数：n_splits=5, shuffle=False.
 #   LeavePOut：可配置参数：p=1.
 # ================================================================================================
 data_splitter:
@@ -120,48 +122,60 @@ data_processor:
         - name: StandardScaler
 
 # ================================================================================================
-# 数据模型配置.
+# 数据模型配置. 最佳模型：对于不同模型、不同参数，将根据评估指标选择对应的最佳模型.
+#
 # target_fields：
 #     配置目标字段，如果未配置目标字段，数据中的最后一个字段认定为是目标字段.
 # models:
-#     配置模型.
+#     配置数据模型，可配置多个数据模型.
 #   estimator:
-#        模型，支持SVC.
+#        模型名称，支持SVC等各种回归、分类模型.
 #   param_grid:
-#        配置模型参数.
-#   fine_tune:
-#     GridSearchCV（网格搜索）、（随机搜索）
+#        配置模型参数，每个参数可配置多个值.
+# fine_tune:
+#     模型调优方法，支持：GridSearchCV（网格搜索）、RandomizedSearchCV（随机搜索）
 # assessments:
-#     评估方法配置.支持sklearn.metrics中如下评估方式：
-#     回归指标.
-#        mean_squared_error
-#       root_mean_squared_error
-#     分类指标：
-#       accuracy_score
-#       precision_score
-#       recall_score
-#       f1_score
-#       classification_report
+#     评估方法配置.支持sklearn.metrics中评估指标.
+#     name:
+#       评估方法名称.支持如下：
+#         回归指标.
+#           mean_squared_error
+#           root_mean_squared_error
+#         分类指标：
+#           accuracy_score
+#           precision_score
+#           recall_score
+#           f1_score
+#           roc_auc_score
+#           classification_report
+#           confusion_matrix
+#     min_max:
+#       评估准则，根据评估指标的最大值还是最小值来判断最佳.
+#     params:
+#       评估方法的参数.
 # ================================================================================================
 data_modeler:
   target_fields: [ median_house_value ]
   models:
     - estimator: SVC
       param_grid: [ ]
-  fine_tune: GridSearchCV
+  fine_tune: RandomizedSearchCV
   assessments:
-    - name: accuracy_score
+#    - name: accuracy_score
+#      min_max: max
+#      params:
+#    - name: precision_score
+#      min_max: max
+#      params: { average: micro }
+#    - name: f1_score
+#      min_max: max
+#      params: { average: micro }
+#    - name: recall_score
+#      min_max: max
+#      params: { average: micro }
+#    - name: classification_report
+#      min_max: max
+#      params:
+    - name: roc_auc_score
       min_max: max
-      params:
-    - name: precision_score
-      min_max: max
-      params: { average: micro }
-    - name: f1_score
-      min_max: max
-      params: { average: micro }
-    - name: recall_score
-      min_max: max
-      params: { average: micro }
-    - name: classification_report
-      min_max: max
-      params:
+      params: {multi_class: ovo}

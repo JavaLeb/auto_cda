@@ -58,10 +58,13 @@ if __name__ == '__main__':
 
     # 数据处理.
     data_processor = DataProcessor()
-    data = data_processor.process(train_data)
+    processed_train_data = data_processor.process(train_data)
+    processed_valid_data = data_processor.process(valid_data)
 
     data_modeler = DataModeler()
-    data_modeler.model(train_data, valid_data)
+    data_modeler.model(processed_train_data, processed_valid_data)
+
+    data_modeler.save_predict(processed_valid_data)
 
     # 数据读取
     # data_reader = DataReader(ds_type='file')
@@ -91,4 +94,4 @@ if __name__ == '__main__':
     # y_pred_loaded = loaded_model.predict(X_test)
     # print("Loaded Model Predictions:", y_pred_loaded)
 
-    print('调试')
+    print('程序结束！')

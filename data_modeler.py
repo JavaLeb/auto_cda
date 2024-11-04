@@ -3,12 +3,14 @@ import sklearn.preprocessing
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import precision_score, mean_squared_error, accuracy_score, classification_report,f1_score
+from sklearn.metrics import precision_score, mean_squared_error, accuracy_score, classification_report, f1_score, \
+    roc_auc_score
 from pandas import DataFrame
 from data_configuration import data_modeler_conf
 from tools import instantiate_class
 from operator import methodcaller
 from tools import print_with_sep_line, logger
+import joblib
 
 model_dic = {
     'sklearn.svm': ['SVC'],
@@ -18,7 +20,7 @@ model_dic = {
 
 class DataModeler:
     def __init__(self):
-        self._final_model_params = None
+        self._best_model_params = None
         self._best_model_params = []
         self._target_fields = data_modeler_conf.get('target_fields')
 
@@ -52,7 +54,10 @@ class DataModeler:
         self._summary = DataFrame()
         self._summary['model'] = self._models
         self._best_params_model = []
-        self._final_best_model = None
+        self._best_model = None
+        self._final_model_index = None
+
+        self._best_indices = []
 
     def model(self, train_data: DataFrame = None, valid_data: DataFrame = None):
         logger.info('开始数据建模...................')
@@ -93,6 +98,14 @@ class DataModeler:
                 # else:
                 #     params = {'labels': train_target_data}
                 try:
+                    if assess_name == 'roc_auc_score':
+                        train_prediction_data = model.decision_function(train_feature_data)
+                        valid_prediction_data = model.decision_function(valid_feature_data)
+                        import numpy as np
+                        exp_values = np.exp(train_prediction_data)
+                        train_prediction_data = exp_values / np.sum(exp_values, axis=1, keepdims=True)
+                        exp_values = np.exp(valid_prediction_data)
+                        valid_prediction_data = exp_values / np.sum(exp_values, axis=1, keepdims=True)
                     train_assessment_method = methodcaller(assess_name, train_target_data, train_prediction_data,
                                                            **params)
                     train_assess_result = train_assessment_method(sklearn.metrics)
@@ -116,36 +129,54 @@ class DataModeler:
         print_with_sep_line('数据模型摘要：\n', self._summary.to_markdown())
 
         # 寻找每个评估指标最优的模型.
-        best_indices = []
         for assessment in self._assessments:
             assess_name = assessment.get('name')
             min_max = assessment.get('min_max')
             if min_max == 'min':
                 best_index = valid_summary['valid-' + assess_name].idxmin()
-                best_indices.append(best_index)
+                self._best_indices.append(best_index)
             elif min_max == 'max':
                 best_index = valid_summary['valid-' + assess_name].idxmax()
-                best_indices.append(best_index)
+                self._best_indices.append(best_index)
             else:
                 raise Exception(f'不支持的评估准则{min_max}')
 
         best_model_df = pd.DataFrame(data=[assessment.get('name') for assessment in self._assessments],
                                      columns=['assessment'])
-        model_params_df = pd.DataFrame(data=[str(self._best_model_params[i]) for i in best_indices],
-                                       columns=['model_params'])
-        best_model_summary = self._summary.iloc[best_indices].reset_index(drop=True)['model']
-        best_model_df = pd.concat([best_model_df, best_model_summary, model_params_df], axis=1)
-
+        best_model_params_df = pd.DataFrame(data=[str(self._best_model_params[i]) for i in self._best_indices],
+                                            columns=['model_params'])
+        best_model_summary = self._summary.iloc[self._best_indices].reset_index(drop=True)['model']
+        best_model_df = pd.concat([best_model_df, best_model_summary, best_model_params_df], axis=1)
         print_with_sep_line('最佳数据模型摘要：\n', best_model_df.to_markdown())
-        self._final_best_model = [self._models[i] for i in list(set(best_indices))]
-        self._final_model_params = [self._best_model_params[i] for i in list(set(best_indices))]
+        self._best_model = [self._models[i] for i in list(set(self._best_indices))]
+        self._best_model_params = [self._best_model_params[i] for i in list(set(self._best_indices))]
 
-        import joblib
-        for best_model in self._final_best_model:
-            # 模型保存
-            joblib.dump(best_model, f'model/{best_model}.pkl')
+        # 保存模型.
+        self.save_model()
 
         logger.info('数据建模完成...................')
 
     def best_model(self):
-        pass
+        return self._best_model
+
+    def save_model(self):
+        # 保存最佳模型
+        for best_model in self._best_model:
+            # 模型保存
+            joblib.dump(best_model, f'model/{best_model}.pkl')
+
+    def predict(self, data: DataFrame):
+        feature_data = data.drop(columns=self._target_fields).values
+        prediction_data = DataFrame()
+        for best_model in self._best_model:
+            prediction_data[best_model] = best_model.predict(feature_data)
+
+        return prediction_data
+
+    def save_predict(self, data: DataFrame):
+        logger.info('预测值保存开始.................')
+        prediction_data = self.predict(data)
+        result = pd.concat([data, prediction_data], axis=1)
+        file_path = 'result/predict_result.csv'
+        result.to_csv(file_path, index=False)
+        logger.info('预测值保存完成!!!!!!!!!!!!!!!!')
