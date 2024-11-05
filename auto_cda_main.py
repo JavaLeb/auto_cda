@@ -92,6 +92,17 @@ def auto_sina():
     data_modeler = DataModeler()
     data_modeler.model(train_data, valid_data)
 
+    # 读取测试数据.
+    test_data = data_reader.read(train=False)
+    # 探索测试数据.
+    data_explorer = DataExplorer(test_data)
+    data_explorer.explore()
+
+    test_processed_data = data_processor.process(test_data)
+
+    # 模型预测并保存预测结果.
+    data_modeler.save_predict(test_data, test_processed_data)
+
 
 if __name__ == '__main__':
     auto_sina()

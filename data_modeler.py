@@ -6,6 +6,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import precision_score, mean_squared_error, accuracy_score, classification_report, f1_score, \
     roc_auc_score
 from pandas import DataFrame
+from sklearn.preprocessing import LabelEncoder, LabelBinarizer
 from data_configuration import data_modeler_conf
 from tools import instantiate_class
 from operator import methodcaller
@@ -20,6 +21,9 @@ model_dic = {
 
 class DataModeler:
     def __init__(self):
+        save_predict = data_modeler_conf.get('save_predict')
+        self._save_predict_path = save_predict.get('path')
+        self._save_target_field = save_predict.get('target_name')
         self._best_model_params = None
         self._best_model_params = []
         self._target_fields = data_modeler_conf.get('target_fields')
@@ -56,7 +60,8 @@ class DataModeler:
         self._best_params_model = []
         self._best_model = None
         self._final_model_index = None
-
+        self._label_encoder_name = data_modeler_conf.get('target_encoder').get('name')
+        self._label_encoder = None
         self._best_indices = []
 
     def model(self, train_data: DataFrame = None, valid_data: DataFrame = None):
@@ -71,6 +76,15 @@ class DataModeler:
         valid_feature_data = valid_data.drop(columns=self._target_fields).values
         valid_target_data = valid_data[self._target_fields].values
 
+        if self._label_encoder_name:
+            if '.' not in self._label_encoder_name:
+                model_path = 'sklearn.preprocessing.' + self._label_encoder_name
+            else:
+                model_path = self._label_encoder_name
+            encoder_cls = instantiate_class(model_path)
+            self._label_encoder = encoder_cls
+            train_target_data = encoder_cls.fit_transform(train_target_data.ravel())
+            valid_target_data = encoder_cls.fit_transform(valid_target_data.ravel())
         # todo 可以使用多线程优化.
         train_assess = []
         valid_assess = []
@@ -166,17 +180,24 @@ class DataModeler:
             joblib.dump(best_model, f'model/{best_model}.pkl')
 
     def predict(self, data: DataFrame):
-        feature_data = data.drop(columns=self._target_fields).values
+        drop_columns = list(set(self._target_fields) & set(data.columns))
+        if drop_columns:
+            feature_data = data.drop(columns=drop_columns).values
+        else:
+            feature_data = data.values
         prediction_data = DataFrame()
-        for best_model in self._best_model:
-            prediction_data[best_model] = best_model.predict(feature_data)
+        prediction = self._best_model[0].predict(feature_data)
+        if self._label_encoder:
+            prediction = self._label_encoder.inverse_transform(prediction)
+        prediction = pd.DataFrame(data=prediction, columns=self._save_target_field)
 
-        return prediction_data
+        return prediction
 
-    def save_predict(self, data: DataFrame):
+    def save_predict(self, raw_data: DataFrame, data: DataFrame):
         logger.info('预测值保存开始.................')
         prediction_data = self.predict(data)
-        result = pd.concat([data, prediction_data], axis=1)
-        file_path = 'result/predict_result.csv'
-        result.to_csv(file_path, index=False)
+        result = pd.concat([prediction_data, raw_data], axis=1)
+        result.to_csv(self._save_predict_path, index=False)
+        print('保存路径：\n', self._save_predict_path)
+        print('保存记录数（含标题行）：\n', len(result))
         logger.info('预测值保存完成!!!!!!!!!!!!!!!!')

@@ -9,6 +9,7 @@ data_source:
   #  train_path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
   #  test_path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
   train_path: 'E:\pycharm_workspace\auto_cda\data\sina_train.csv'
+  test_path: E:\pycharm_workspace\auto_cda\data\sina_test_X.csv
   #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
   header: 0 # 标题行.
 
@@ -156,6 +157,8 @@ data_processor:
 # ================================================================================================
 data_modeler:
   target_fields: [ channel_title ]
+  target_encoder:
+    name: LabelEncoder
   models:
     - estimator: SVC
       param_grid: [ ]
@@ -180,3 +183,6 @@ data_modeler:
 #    - name: roc_auc_score
 #      min_max: max
 #      params: { multi_class: ovo }
+  save_predict:
+    path: result/predict_result.csv
+    target_name: [channel_title]
