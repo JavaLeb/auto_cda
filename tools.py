@@ -1,4 +1,9 @@
+import fnmatch
 import logging
+import os
+import zipfile
+import glob
+import configparser
 
 logger = logging.getLogger('auto_cda_logger')
 logger.setLevel(logging.INFO)
@@ -48,3 +53,34 @@ def instantiate_class(class_path, **params):
         instant = class_()
 
     return instant
+
+
+def package():
+    # 读取配置文件
+    config = configparser.ConfigParser()
+    config.read(r'conf/packaging.cfg')
+
+    # 获取配置项
+    source_directory = config['DEFAULT']['SourceDirectory']
+    zip_filename = config['DEFAULT']['ZipFilename']
+    include_patterns = config['Patterns']['Include']
+    exclude_patterns = config['Patterns']['Exclude']
+
+    # 创建一个zip文件对象
+    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        # 遍历所有包含模式的文件
+        for pattern in include_patterns.split(','):
+            pattern \
+                = pattern.strip()
+            for path in glob.glob(os.path.join(source_directory, pattern), recursive=True):
+                # 如果文件匹配排除模式，则跳过
+                if any(fnmatch.fnmatch(path, pat) for pat in exclude_patterns.split(',')):
+                    continue
+                # 添加文件到zip文件
+                arc_name = os.path.relpath(path, source_directory)
+                zipf.write(path, arc_name)
+
+
+if __name__ == '__main__':
+    # 调用打包函数
+    package()
