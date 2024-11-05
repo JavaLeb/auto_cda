@@ -3,12 +3,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from data_configuration import data_processor_conf
 from tools import get_fields, instantiate_class
 from pandas import DataFrame
-from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler, LabelEncoder
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler, LabelEncoder, StandardScaler
 from typing import List
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer, make_column_transformer
 from tools import logger
+
+from sklearn.base import BaseEstimator, TransformerMixin
 
 # 配置.
 ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
@@ -18,11 +20,8 @@ field_selection_conf = data_processor_conf.get('field_selection')
 
 DROP_FIELDS = 'drop_fields'
 
-encoder_dic = {
-    'sklearn.preprocessing': ['OrdinalEncoder', 'OneHotEncoder', 'LabelEncoder'],
-    'sklearn.feature_extraction.text': ['TfidfVectorizer']
-}
 transformer_dic = {
+    'sklearn.preprocessing': ['OrdinalEncoder', 'OneHotEncoder', 'LabelEncoder'],
     'sklearn.feature_extraction.text': ['TfidfVectorizer']
 }
 
@@ -35,7 +34,6 @@ class DataProcessor:
         logger.info('数据处理开始......................')
         data = self.select_field(data, [])
         data = self.clean_field(data)
-        data = self.encode_field(data)
         data = self.transform_field(data)
         logger.info('数据处理完成！！！！！！！！！！！！！')
         return data
@@ -88,84 +86,75 @@ class DataProcessor:
 
         return data
 
-    def encode_field(self, data: DataFrame = None):
-        """
-        对数据进行编码.
-        :param data: 待编码的数据.
-        :return: 编码后的数据.
-        """
-        # 获取配置的编码字段.
-        field_encoder_list = data_processor_conf.get('field_encoder')
-        # 根据字段编码配置不同，进行不同形式的编码.
-        for field_encoder in field_encoder_list:
-            fields = field_encoder.get('fields')
-            fields = list(set(fields) & set(data.columns))
-            if fields is None:
-                break
-
-            encoder_name = field_encoder.get('encoder').get('name')
-            if not fields:
-                break
-            for field in fields:
-                if encoder_name == 'OrdinalEncoder':
-                    ordinal_encoder = OrdinalEncoder()
-                    ordinal_encoded_data = ordinal_encoder.fit_transform(data[[field]])
-                    data[field] = ordinal_encoded_data
-                elif encoder_name == 'OneHotEncoder':
-                    one_hot_encoder = OneHotEncoder(sparse_output=False)
-                    one_hot_encoded_data = one_hot_encoder.fit_transform(data[[field]])
-                    # 构建新的列名称.
-                    columns = [str(field) + '_' + str(i) for i in range(one_hot_encoded_data.shape[1])]
-                    data = data.drop(field, axis=1)
-                    data[columns] = pd.DataFrame(data=one_hot_encoded_data, columns=columns)
-                elif encoder_name == 'LabelEncoder':
-                    label_encoder = LabelEncoder()
-                    label_encoded_data = label_encoder.fit_transform(data[field])
-                    data[field] = label_encoded_data
-                elif encoder_name == 'TfidfVectorizer':
-                    vectorizer = TfidfVectorizer(max_features=1000)
-                    dense_vectorized_data = vectorizer.fit_transform(data[field]).toarray()
-                    columns = [str(field) + '_' + str(i) for i in range(dense_vectorized_data.shape[1])]
-                    dense_vectorized_data = pd.DataFrame(data=dense_vectorized_data, columns=columns)
-
-                    data = pd.merge(data, dense_vectorized_data, left_index=True, right_index=True)
-
-                    # data[columns]=dense_vectorized_data
-                    data = data.drop(field, axis=1)
-        return data
-
     def transform_field(self, data: DataFrame = None) -> DataFrame:
+
         # 获取配置的编码字段.
         field_transformer_list = data_processor_conf.get('field_transformer')
+        if field_transformer_list is None:
+            return data
         col_transformer_steps = []
         i = 0
-        for field_transformer in field_transformer_list:
-            fields = field_transformer.get('fields')
-            fields = list(set(fields) & set(data.columns))
-            if not fields:
-                break
-            transformers = field_transformer.get('transformers')
-            steps = []
-            for transformer in transformers:
-                transformer_name = transformer.get('name')
-                if not transformer_name:
-                    break
-                for key, value in transformer_dic.items():
-                    if transformer_name in value:
-                        transformer_name = key + '.' + transformer_name
-                        break
-                if '.' not in transformer_name:
-                    module_path = 'sklearn.preprocessing.' + str(transformer_name)
-                else:
+        for col in data.columns:
+            col_steps = []
+            for field_transformer in field_transformer_list:
+                fields = field_transformer.get('fields')
+                fields = list(set(fields) & set(data.columns))
+                if col not in fields:  # 没有配置字段忽略转换.
+                    continue
+                transformers = field_transformer.get('transformers')
+                for transformer in transformers:
+                    transformer_name = transformer.get('name')
+                    params = transformer.get('params')
                     module_path = transformer_name
-                transformer_cls = instantiate_class(module_path)
-                steps.append((transformer_name, transformer_cls))
-            # 使用pipeline.
-            pipeline = Pipeline(steps)
-            col_transformer_steps.append((str(i), pipeline, fields))
-            i += 1
-        col_transformer = ColumnTransformer(col_transformer_steps, remainder='passthrough')
-        transformed_data = col_transformer.fit_transform(data)
-        data = pd.DataFrame(data=transformed_data, columns=data.columns)
+                    if not transformer_name:
+                        break
+                    for key, value in transformer_dic.items():
+                        if transformer_name in value:
+                            module_path = key + '.' + transformer_name
+                            break
+                    if '.' not in module_path:
+                        module_path = 'data_processor.' + module_path
+                    if params:
+                        transformer_cls = instantiate_class(module_path, **params)
+                    else:
+                        transformer_cls = instantiate_class(module_path)
+                    col_steps.append((transformer_name, transformer_cls))
+            if len(col_steps) == 0:
+                continue
+            pipeline = Pipeline(col_steps)  # 一个列的处理流程.
+            if col_steps[0][0] == 'TfidfVectorizer':  # 需要使用data[col]，而不能使用data[[col]]
+                col_transformer_steps.append((str(i), pipeline, col))
+                transformed_data = pipeline.fit_transform(data[col])
+            else:
+                col_transformer_steps.append((str(i), pipeline, [col]))
+                transformed_data = pipeline.fit_transform(data[[col]])
+            if transformed_data.shape[1] == 1:  # 转换前后列数不变，直接赋值.
+                data[col] = transformed_data
+            else:  # 转换以后列数改变，删除后新增.
+                columns = [str(col) + '_' + str(i) for i in range(transformed_data.shape[1])]
+                transformed_data = pd.DataFrame(data=transformed_data, columns=columns)
+                data = data.drop(columns=[col])
+                data = pd.concat([data, transformed_data], axis=1)
 
         return data
+
+
+class SparseTransformer(BaseEstimator, TransformerMixin):
+    """
+    将稀疏矩阵转换成密集矩阵.
+    """
+
+    def __init__(self):
+        pass
+
+    def fit(self, X, y=None):
+        self.n_features_in_ = X.shape[1]
+
+        return self
+
+    def transform(self, X):
+        import scipy.sparse as sp
+        if sp.issparse(X):
+            return X.toarray()
+        else:
+            return X

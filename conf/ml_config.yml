@@ -62,8 +62,8 @@ data_splitter:
   splitter: simple
   params:
     train_size: 0.7
-#    shuffle: True
-#    random_state: 42
+    shuffle: True
+    random_state: 42
 
 
 # ================================================================================================
@@ -94,39 +94,32 @@ data_processor:
         value:  # 填充的值，当method=const时生效.
 
   # ------------------------------------------------------------------
-  # 字段编码器配置：
-  #   对字段进行编码，例如：对字段的所有值进行独热编码.
-  # fields:
-  #   配置需要进行编码的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
-  # name:
-  #   配置编码器名称，支持ordinal（有序编码）、one_hot（独热编码）、label（标签编码）.
-  # ------------------------------------------------------------------
-  field_encoder:
-    - fields: [ channel_title ]
-      encoder:
-        name: LabelEncoder
-    - fields: [ text ]
-      encoder:
-        name: TfidfVectorizer
-        params: { max_features: 1000 }
-
-  # ------------------------------------------------------------------
   # 字段转换器配置：
-  #   对字段进行转换，例如：对字段的所有值进行标准化.
-  #   转换器不会增加或减少字段个数，也不会修改字段名称：transformer(f_1,f_2,...,f_n)=f_1,f_2,...,f_n.
+  #   对字段进行转换，例如：对字段的所有值进行标准化. 转换器执行时按照配置的顺序执行.
+  #   转换器可以增加字段数，字段命名为：原字段名称_序号.
   # fields:
   #   配置需要进行转换的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
   # transformers:
-  #   配置转换器，可配置转换器名称（MinMaxScaler，等价于sklearn.preprocessing.MinMaxScaler）
-  #   或转换器全路径（sklearn.preprocessing.MinMaxScaler），也可配置自定义转换器，无论系统内置或自定义的转换器，均
-  #   需实现fit()、transform()和fit_transform()方法. 转换器执行时按照配置的顺序执行.
+  #   配置转换器
+  #   name: 配置转换器名称，支持如下转换器：
+  #       MinMaxScaler：最大最小标准化
+  #       StandardScaler：标准化.
+  #       TfidfVectorizer：文本词频-逆文档频率.
+  #       自定义转换器：需实现fit()、transform()
+  #   params: 配置转换器参数.
   # ------------------------------------------------------------------
   field_transformer:
-    - fields: [  ]
+    - fields: [ channel_title ]
+      transformers:
+        - name:
+          params:
+    - fields: [ text ]
       transformers:
         - name: TfidfVectorizer
-          params: { }
-#        - name: StandardScaler
+          params: { max_features: 1000 }
+        - name: SparseTransformer
+        - name: StandardScaler
+#          params: {with_mean: False}
 
 # ================================================================================================
 # 数据模型配置. 最佳模型：对于不同模型、不同参数，将根据评估指标选择对应的最佳模型.
