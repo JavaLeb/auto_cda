@@ -8,8 +8,8 @@ data_source:
   #  path: 'E:\pycharm_workspace\cda\d2l\data\house-prices-advanced-regression-techniques\train.csv'
   #  train_path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
   #  test_path: E:\pycharm_workspace\auto_cda\data\housing\housing.csv
-  train_path: 'E:\pycharm_workspace\auto_cda\data\sina_train.csv'
-  test_path: E:\pycharm_workspace\auto_cda\data\sina_test_X.csv
+  train_path: 'E:\pycharm_workspace\auto_cda\data\sina\sina_train.csv'
+  test_path: E:\pycharm_workspace\auto_cda\data\sina\sina_test_X.csv
   #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
   header: 0 # 标题行.
 
