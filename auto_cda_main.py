@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 
+import data_splitter
 from data_reader import DataReader
 from data_explorer import DataExplorer
 from data_splitter import DataSplitter
@@ -43,7 +44,7 @@ def read_mnist() -> DataFrame:
     return mnist_data
 
 
-if __name__ == '__main__':
+def auto_mnist():
     mnist_data = read_mnist()
 
     # 数据切分.
@@ -66,6 +67,35 @@ if __name__ == '__main__':
 
     data_modeler.save_predict(processed_valid_data)
 
+
+def auto_sina():
+    # 数据读取
+    data_reader = DataReader(ds_type='file')
+    data = data_reader.read()
+
+    # 数据探索.
+    data_explorer = DataExplorer(data)
+    data_explorer.explore()
+
+    # 数据处理.
+    data_processor = DataProcessor()
+    data = data_processor.process(data)
+
+    # 数据探索.
+    data_explorer = DataExplorer(data)
+    data_explorer.explore()
+
+    data_splitter = DataSplitter()
+    train_data_list, valid_data_list = data_splitter.split(data)
+    train_data, valid_data = train_data_list[0], valid_data_list[0]
+
+    data_modeler = DataModeler()
+    data_modeler.model(train_data, valid_data)
+
+
+if __name__ == '__main__':
+    auto_sina()
+
     # 数据读取
     # data_reader = DataReader(ds_type='file')
     # data = data_reader.read()
@@ -85,7 +115,7 @@ if __name__ == '__main__':
     # valid_data = valid_data_list[0]
     #
     # data_modeler = DataModeler()
-    # data_modeler.model(train_data, valid_data)
+    #     # data_modeler.model(train_data, valid_data)
 
     # import joblib
     #

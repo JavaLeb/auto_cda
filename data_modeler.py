@@ -14,7 +14,7 @@ import joblib
 
 model_dic = {
     'sklearn.svm': ['SVC'],
-    'sklearn.ensemble': ['RandomForestRegressor']
+    'sklearn.ensemble': ['RandomForestRegressor', 'RandomForestClassifier']
 }
 
 
@@ -154,7 +154,7 @@ class DataModeler:
         # 保存模型.
         self.save_model()
 
-        logger.info('数据建模完成...................')
+        logger.info('数据建模完成!!!!!!!!!!!!!!!!!!')
 
     def best_model(self):
         return self._best_model

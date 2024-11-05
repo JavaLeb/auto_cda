@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
 from tools import logger
+
 # 配置.
 # 字段唯一值占比.
 FIELD_UNIQUE_RATIO = 'field_unique_ratio'
@@ -52,7 +53,7 @@ class DataExplorer:
         self._object_field_list = []
 
         self._hist_plot_field = []
-        self._missing_value = DataFrame()
+        self._missing_value_count = DataFrame()
         self._missing_field = []
         self._detail = []
 
@@ -88,7 +89,7 @@ class DataExplorer:
         else:
             n = data_explorer_conf.get('head_num')
         self._head_n_data = self._data.head(n).to_markdown()
-        print_with_sep_line(f'前{n}行数据（data shape：{self._data.shape}')
+        print_with_sep_line(f'前{n}行数据（shape：{self._data.shape}）')
         print(self._head_n_data)
 
         return self._head_n_data
@@ -169,11 +170,17 @@ class DataExplorer:
         探索缺失值.
         :return:
         """
-        self._missing_value = self._data.isna().sum()
-        self._missing_value = self._missing_value.rename('Missing-Value-Count')
-        import numpy as np
-        self._missing_field = self._missing_value[self._missing_value > 0]
-        self._field_info = pd.concat([self._field_info, self._missing_value], axis=1)
+        # is_na的形状与self._data相同，只是缺失值为True，非缺失值为False.
+        is_na = self._data.isna()
+        self._missing_value_count = is_na.sum()  # 计算每个字段缺失值的个数，无缺失值的字段统计结果为0.
+        self._missing_value_count = self._missing_value_count.rename('Missing-Value-Count')
+
+        na_first_index = is_na.idxmax(axis=0).astype(str)  # 计算每列中第一个缺失值的索引.
+        na_first_index = na_first_index.rename('First-Missing-Index')
+        na_first_index[self._missing_value_count <= 0] = 'None'  # 将不含缺失值的列的索引初始化为空.
+        self._missing_field = self._missing_value_count[self._missing_value_count > 0]
+        self._field_info = pd.concat([self._field_info, self._missing_value_count, na_first_index], axis=1)
+
         self._data_summary['total-missing-field'] = [len(self._missing_field)]
         if len(self._missing_field) > 0:
             self._detail.append('_' * 50)

@@ -1,12 +1,14 @@
 import pandas as pd
-
+from sklearn.feature_extraction.text import TfidfVectorizer
 from data_configuration import data_processor_conf
 from tools import get_fields, instantiate_class
 from pandas import DataFrame
-from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler, LabelEncoder
 from typing import List
-
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer, make_column_transformer
+from tools import logger
 
 # 配置.
 ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
@@ -16,17 +18,26 @@ field_selection_conf = data_processor_conf.get('field_selection')
 
 DROP_FIELDS = 'drop_fields'
 
+encoder_dic = {
+    'sklearn.preprocessing': ['OrdinalEncoder', 'OneHotEncoder', 'LabelEncoder'],
+    'sklearn.feature_extraction.text': ['TfidfVectorizer']
+}
+transformer_dic = {
+    'sklearn.feature_extraction.text': ['TfidfVectorizer']
+}
+
 
 class DataProcessor:
     def __init__(self):
         pass
 
     def process(self, data: DataFrame = None) -> DataFrame:
+        logger.info('数据处理开始......................')
         data = self.select_field(data, [])
         data = self.clean_field(data)
         data = self.encode_field(data)
         data = self.transform_field(data)
-
+        logger.info('数据处理完成！！！！！！！！！！！！！')
         return data
 
     def select_field(self, data: DataFrame = None, drop_fields: List = None) -> DataFrame:
@@ -54,7 +65,7 @@ class DataProcessor:
                     if clean_method == 'drop':
                         data = data.drop([field_name], axis=1)
                     elif clean_method == 'drop_na':
-                        data.dropna(subset=[field_name], inplace=True)
+                        data = data.dropna(subset=[field_name]).reset_index(drop=True)
                     elif clean_method == 'fill':
                         if method == 'const' and value:
                             data[field_name] = value
@@ -89,27 +100,45 @@ class DataProcessor:
         for field_encoder in field_encoder_list:
             fields = field_encoder.get('fields')
             fields = list(set(fields) & set(data.columns))
+            if fields is None:
+                break
+
             encoder_name = field_encoder.get('encoder').get('name')
             if not fields:
                 break
             for field in fields:
-                if encoder_name == 'ordinal':
+                if encoder_name == 'OrdinalEncoder':
                     ordinal_encoder = OrdinalEncoder()
                     ordinal_encoded_data = ordinal_encoder.fit_transform(data[[field]])
                     data[field] = ordinal_encoded_data
-                elif encoder_name == 'one_hot':
+                elif encoder_name == 'OneHotEncoder':
                     one_hot_encoder = OneHotEncoder(sparse_output=False)
                     one_hot_encoded_data = one_hot_encoder.fit_transform(data[[field]])
                     # 构建新的列名称.
                     columns = [str(field) + '_' + str(i) for i in range(one_hot_encoded_data.shape[1])]
                     data = data.drop(field, axis=1)
                     data[columns] = pd.DataFrame(data=one_hot_encoded_data, columns=columns)
+                elif encoder_name == 'LabelEncoder':
+                    label_encoder = LabelEncoder()
+                    label_encoded_data = label_encoder.fit_transform(data[field])
+                    data[field] = label_encoded_data
+                elif encoder_name == 'TfidfVectorizer':
+                    vectorizer = TfidfVectorizer(max_features=1000)
+                    dense_vectorized_data = vectorizer.fit_transform(data[field]).toarray()
+                    columns = [str(field) + '_' + str(i) for i in range(dense_vectorized_data.shape[1])]
+                    dense_vectorized_data = pd.DataFrame(data=dense_vectorized_data, columns=columns)
 
+                    data = pd.merge(data, dense_vectorized_data, left_index=True, right_index=True)
+
+                    # data[columns]=dense_vectorized_data
+                    data = data.drop(field, axis=1)
         return data
 
     def transform_field(self, data: DataFrame = None) -> DataFrame:
         # 获取配置的编码字段.
         field_transformer_list = data_processor_conf.get('field_transformer')
+        col_transformer_steps = []
+        i = 0
         for field_transformer in field_transformer_list:
             fields = field_transformer.get('fields')
             fields = list(set(fields) & set(data.columns))
@@ -121,15 +150,22 @@ class DataProcessor:
                 transformer_name = transformer.get('name')
                 if not transformer_name:
                     break
+                for key, value in transformer_dic.items():
+                    if transformer_name in value:
+                        transformer_name = key + '.' + transformer_name
+                        break
                 if '.' not in transformer_name:
                     module_path = 'sklearn.preprocessing.' + str(transformer_name)
                 else:
                     module_path = transformer_name
-                cls = instantiate_class(module_path)
-                steps.append((transformer_name, cls))
+                transformer_cls = instantiate_class(module_path)
+                steps.append((transformer_name, transformer_cls))
             # 使用pipeline.
             pipeline = Pipeline(steps)
-            transformed_data = pipeline.fit_transform(data[fields])
-            data[fields] = pd.DataFrame(data=transformed_data, columns=fields)
+            col_transformer_steps.append((str(i), pipeline, fields))
+            i += 1
+        col_transformer = ColumnTransformer(col_transformer_steps, remainder='passthrough')
+        transformed_data = col_transformer.fit_transform(data)
+        data = pd.DataFrame(data=transformed_data, columns=data.columns)
 
         return data
