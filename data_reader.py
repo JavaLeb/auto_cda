@@ -29,6 +29,7 @@ class DataReader:
         if header:
             self._header = header
         logger.info('开始加载数据....................')
+        print('数据路径：', self._file_path)
         if 'file' == self._ds_type:
             if 'csv' == self._file_format or 'txt' == self._file_format:
                 self._data = pd.read_csv(self._file_path, header=self._header, sep=self._field_sep, engine='python')

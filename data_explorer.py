@@ -6,6 +6,7 @@ import seaborn as sns
 from collections import Counter
 from tools import logger
 from data_configuration import Configuration
+import numpy as np
 
 # 配置.
 # 字段唯一值占比.
@@ -52,7 +53,21 @@ class DataExplorer:
         self._field_type_list = []
         self._object_field_list = []
 
-        self._hist_plot_field = []
+        self._hist_plot_field = self._data_explorer_conf.get('hist_plot_fields')
+        if self._hist_plot_field is not None:
+            self._hist_plot_field = list(set(self._hist_plot_field) & set(data.columns))
+        self._is_explore_relation = self._data_explorer_conf.get(EXPLORE_RELATION)
+        self._relation_fields = self._data_explorer_conf.get('relation_fields')
+        if self._relation_fields is not None:
+            self._relation_fields = list(set(self._relation_fields) & set(data.columns))
+        self._relation_threshold = self._data_explorer_conf.get('relation_threshold')
+        if self._relation_threshold is None:
+            self._relation_threshold = 0.5
+        else:
+            if self._relation_threshold > 1:
+                self._relation_threshold = 1.0
+            elif self._relation_threshold < -1:
+                self._relation_threshold = -1.0
         self._missing_value_count = DataFrame()
         self._missing_field = []
         self._detail = []
@@ -68,14 +83,20 @@ class DataExplorer:
         self._explore_field()
         self.explore_missing_value()
         self.explore_duplicate_value()
-        if self._data_explorer_conf.get(EXPLORE_RELATION):
-            self._explore_relation(self._data)
+        if self._is_explore_relation:
+            if self._relation_fields:
+                self._explore_relation(self._data[self._relation_fields])
+            else:
+                self._explore_relation(self._data)
         self.print_summary()
 
         # 直方图.
         explore_hist = self._data_explorer_conf.get(EXPLORE_HIST)
         if explore_hist:
-            self._histplot(self._data[self._hist_plot_field])
+            if self._hist_plot_field:
+                self._histplot(self._data[self._hist_plot_field])
+            else:
+                self._histplot(self._data)
         logger.info('数据探索完成！！！！！！！！！！！！！！！！！！')
         return self._field_info
 
@@ -203,6 +224,15 @@ class DataExplorer:
         self._detail.append('_' * 50)
         self._detail.append(f'数据的相关性矩阵：\n{corr_matrix.to_markdown()}')
 
+        # 提取大于阈值的元素
+        upper_tri_mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+        result = corr_matrix.where(upper_tri_mask)
+        # 筛选出大于阈值的数据
+        cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
+        cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
+        # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
+        print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result)
+
         # 热力图.
         sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
         plt.title('matrix relation')
@@ -220,8 +250,9 @@ class DataExplorer:
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
                 plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
-            plt.xlabel(col + '(Ftype:' + self.field_type_dic.get(col) + ")")
-            sns.histplot(data[col], kde=True)  # 绘制直方图
+            plt.xlabel(col + '(Ftype:' + self._field_info.loc[col, 'Ftype'] + ")")
+            # density,probability,count
+            sns.histplot(data[col], kde=True, stat='probability')  # 绘制直方图
             num += 1
 
         plt.show()
@@ -231,6 +262,6 @@ class DataExplorer:
         print(self._data_summary.to_markdown())
         print_with_sep_line('数据列的摘要信息：\n', self._field_info.to_markdown())
 
-        # print_with_sep_line('数据的详细信息：')
-        # for s in self._detail:
-        #     print(s)
+        print_with_sep_line('数据的详细信息：')
+        for s in self._detail:
+            print(s)

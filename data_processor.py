@@ -152,3 +152,24 @@ class SparseTransformer(BaseEstimator, TransformerMixin):
             return X.toarray()
         else:
             return X
+
+
+class DateTransformer(BaseEstimator, TransformerMixin):
+    """
+    日期转换器.
+    """
+
+    def __init__(self):
+        pass
+
+    def fit(self, X, y=None):
+        self.n_features_in_ = X.shape[1]
+        self.feature_names_in_ = X.columns
+        return self
+
+    def transform(self, X):
+        df = pd.DataFrame()
+        for col in self.feature_names_in_:
+            df[col] = (pd.to_datetime(X[col]) - pd.Timestamp('1970-01-01')).dt.days
+
+        return pd.DataFrame(data=df)

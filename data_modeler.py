@@ -8,10 +8,12 @@ from tools import instantiate_class
 from operator import methodcaller
 from tools import print_with_sep_line, logger
 import joblib
+from sklearn.linear_model import LinearRegression
 
 model_dic = {
-    'sklearn.svm': ['SVC'],
-    'sklearn.ensemble': ['RandomForestRegressor', 'RandomForestClassifier']
+    'sklearn.svm': ['SVC','LinearSVR','SVR'],
+    'sklearn.ensemble': ['RandomForestRegressor', 'RandomForestClassifier'],
+    'sklearn.linear_model': ['LinearRegression']
 }
 
 

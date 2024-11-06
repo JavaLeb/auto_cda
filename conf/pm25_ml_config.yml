@@ -5,22 +5,14 @@ data_source:
   type: file #数据源类型
   format: txt # 文件的格式（支持excel、txt、csv）
   field_sep: ',' # 字段（属性、特征）之间的分隔符.
-  train_path: ../data/sina/sina_train.csv
-  test_path: ../data/sina/sina_test_X.csv
+  train_path: ../data/pm25/pm25_train.csv
+  test_path: ../data/pm25/pm25_test.csv
   header: 0 # 标题行.
 
 # ================================================================================================
 # 数据探索配置.
 #   head_num:
 #       打印数据的前多少行.
-#   class_fields：
-#       类别字段配置. 如果配置了类别字段，这些字段将被认定为是类别字段，其余字段为非类别字段.
-#       如果配置了类别字段，field_unique_ratio和field_unique_num失效.
-#   value_fields:
-#       数值字段配置. 如果配置了数值字段，这些字段将被认定为数值字段，其余字段为非类别字段.
-#   object_fields:
-#       对象字段配置. 如果配置了该类别字段，这些字段将被认定为对象字段，其余字段为非对象字段.
-#       非类别字段和数值字段都将被认定为是对象字段，例如文本型的字段.
 #   field_unique_ratio:
 #       字段唯一值个数占总行数的比例，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
 #   field_unique_num
@@ -35,7 +27,9 @@ data_explorer:
   field_unique_ratio: 0.001
   field_unique_num: 100
   explore_hist: true
+  hist_plot_fields: [ ]
   explore_relation: true
+  relation_fields: [ ]
 
 
 # ================================================================================================
@@ -85,7 +79,7 @@ data_processor:
   field_cleaner:
     # 缺失值清洗.
     na_cleaner:
-      - fields: [ text ] # 待清洗的字段名称列表.
+      - fields: [ ] # 待清洗的字段名称列表.
         clean_method: drop_na  # 对缺失值处理. drop、drop_na、fill。drop: 删除列。drop_na: 删除缺失值的行，fill：填充缺失值.
         method: median  # 常数值（const）、均值（mean）、中位数（median）、众数（mode）
         value:  # 填充的值，当method=const时生效.
@@ -106,15 +100,13 @@ data_processor:
   #   params: 配置转换器参数.
   # ------------------------------------------------------------------
   field_transformer:
-    - fields: [ channel_title ]
+    - fields: [ date ]
       transformers:
-        - name:
+        - name: DateTransformer
           params:
-    - fields: [ text ]
+        - name: StandardScaler
+    - fields: [ hour,DEWP,TEMP,PRES,Iws,Is,Ir,cbwd_NE,cbwd_NW,cbwd_SE,cbwd_cv ]
       transformers:
-        - name: TfidfVectorizer
-          params: { max_features: 10 }
-        - name: SparseTransformer
         - name: StandardScaler
 #          params: {with_mean: False}
 
@@ -126,11 +118,17 @@ data_processor:
 # models:
 #     配置数据模型，可配置多个数据模型.
 #   estimator:
-#        模型名称，支持SVC等各种回归、分类模型.
+#        模型名称，支持各种回归、分类模型.
+#             LinearRegression： 线性回归.
+#             LinearSVR: 线性支持向量机回归.
 #   param_grid:
 #        配置模型参数，每个参数可配置多个值.
 # fine_tune:
 #     模型调优方法，支持：GridSearchCV（网格搜索）、RandomizedSearchCV（随机搜索）
+#             使用GridSearchCV时，模型可如下配置：
+#                 - estimator: SVR
+#                   param_grid:
+#                     kernel: ['poly']
 # assessments:
 #     评估方法配置.支持sklearn.metrics中评估指标.
 #     name:
@@ -152,33 +150,21 @@ data_processor:
 #       评估方法的参数.
 # ================================================================================================
 data_modeler:
-  target_fields: [ channel_title ]
+  target_fields: [ pm2.5 ]
   target_encoder:
-    name: LabelEncoder
+    name:
   models:
-    - estimator: SVC
+    - estimator: LinearRegression
       param_grid: [ ]
-    - estimator: RandomForestClassifier
-  fine_tune: RandomizedSearchCV
+    - estimator: LinearSVR
+    - estimator: SVR
+      param_grid:
+        kernel: ['poly']
+  fine_tune: GridSearchCV
   assessments:
-    - name: accuracy_score
-      min_max: max
+    - name: root_mean_squared_error
+      min_max: min
       params:
-    - name: precision_score
-      min_max: max
-      params: { average: micro }
-    - name: f1_score
-      min_max: max
-      params: { average: micro }
-    #    - name: recall_score
-    #      min_max: max
-    #      params: { average: micro }
-#      - name: classification_report
-#        min_max: max
-#        params:
-#    - name: roc_auc_score
-#      min_max: max
-#      params: { multi_class: ovo }
   save_predict:
     path: result/predict_result.csv
-    target_name: [channel_title]
+    target_name: [ pm2.5 ]
