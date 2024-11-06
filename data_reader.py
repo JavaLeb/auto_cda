@@ -1,11 +1,12 @@
 import pandas as pd
 from pandas import DataFrame
 from tools import logger
-from data_configuration import data_source_conf
+from data_configuration import Configuration
 
 
 class DataReader:
-    def __init__(self, ds_type) -> None:
+    def __init__(self, ds_type, conf: Configuration) -> None:
+        data_source_conf = conf.data_source_conf
         self._file_path = None
         self._ds_type = ds_type
         self._data = None

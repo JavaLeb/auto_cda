@@ -1,34 +1,28 @@
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from data_configuration import data_processor_conf
+from data_configuration import Configuration
 from tools import get_fields, instantiate_class
 from pandas import DataFrame
-from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler, LabelEncoder, StandardScaler
 from typing import List
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer, make_column_transformer
 from tools import logger
-
 from sklearn.base import BaseEstimator, TransformerMixin
 
 # 配置.
 ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
 ONE_HOT_ENCODER_FIELDS = 'one_hot_encoder_fields'
 
-field_selection_conf = data_processor_conf.get('field_selection')
-
 DROP_FIELDS = 'drop_fields'
 
 transformer_dic = {
-    'sklearn.preprocessing': ['OrdinalEncoder', 'OneHotEncoder', 'LabelEncoder'],
+    'sklearn.preprocessing': ['OrdinalEncoder', 'OneHotEncoder', 'LabelEncoder', 'StandardScaler'],
     'sklearn.feature_extraction.text': ['TfidfVectorizer']
 }
 
 
 class DataProcessor:
-    def __init__(self):
-        pass
+    def __init__(self, conf: Configuration):
+        self._data_processor_conf = conf.data_processor_conf
+        self._field_selection_conf = self._data_processor_conf.get('field_selection')
 
     def process(self, data: DataFrame = None) -> DataFrame:
         logger.info('数据处理开始......................')
@@ -39,7 +33,7 @@ class DataProcessor:
         return data
 
     def select_field(self, data: DataFrame = None, drop_fields: List = None) -> DataFrame:
-        drop_fields = set(drop_fields) | set(get_fields(field_selection_conf, DROP_FIELDS, data.columns))
+        drop_fields = set(drop_fields) | set(get_fields(self._field_selection_conf, DROP_FIELDS, data.columns))
         if drop_fields:
             data = data.drop(drop_fields, axis=1)
 
@@ -51,7 +45,7 @@ class DataProcessor:
         return data
 
     def clean_na_field(self, data: DataFrame = None):
-        na_cleaner_list = data_processor_conf.get('field_cleaner').get('na_cleaner')
+        na_cleaner_list = self._data_processor_conf.get('field_cleaner').get('na_cleaner')
         for na_cleaner in na_cleaner_list:
             fields = na_cleaner.get('fields')
             fields = list(set(data.columns) & set(fields))
@@ -89,7 +83,7 @@ class DataProcessor:
     def transform_field(self, data: DataFrame = None) -> DataFrame:
 
         # 获取配置的编码字段.
-        field_transformer_list = data_processor_conf.get('field_transformer')
+        field_transformer_list = self._data_processor_conf.get('field_transformer')
         if field_transformer_list is None:
             return data
         col_transformer_steps = []

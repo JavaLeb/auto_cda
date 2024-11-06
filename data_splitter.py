@@ -1,9 +1,9 @@
 import numpy as np
 from sklearn.model_selection import KFold, train_test_split, LeavePOut, LeaveOneOut
 
-from data_configuration import data_splitter_conf
+from data_configuration import Configuration
 from pandas import DataFrame
-from tools import print_with_sep_line, instantiate_class,logger
+from tools import print_with_sep_line, instantiate_class, logger
 import pandas as pd
 from operator import methodcaller
 from sklearn import model_selection
@@ -12,7 +12,8 @@ SIMPLE = 'simple'
 
 
 class DataSplitter:
-    def __init__(self, split_type: str = None) -> None:
+    def __init__(self, split_type: str = None, conf: Configuration = None) -> None:
+        data_splitter_conf = conf.data_splitter_conf
         if split_type:
             self._split_type = split_type
         else:

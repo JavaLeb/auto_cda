@@ -1,13 +1,9 @@
+import os
+import datetime
 import pandas as pd
 import sklearn.preprocessing
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import precision_score, mean_squared_error, accuracy_score, classification_report, f1_score, \
-    roc_auc_score
 from pandas import DataFrame
-from sklearn.preprocessing import LabelEncoder, LabelBinarizer
-from data_configuration import data_modeler_conf
+from data_configuration import Configuration
 from tools import instantiate_class
 from operator import methodcaller
 from tools import print_with_sep_line, logger
@@ -20,7 +16,8 @@ model_dic = {
 
 
 class DataModeler:
-    def __init__(self):
+    def __init__(self, conf: Configuration):
+        data_modeler_conf = conf.data_modeler_conf
         save_predict = data_modeler_conf.get('save_predict')
         self._save_predict_path = save_predict.get('path')
         self._save_target_field = save_predict.get('target_name')
@@ -174,10 +171,15 @@ class DataModeler:
         return self._best_model
 
     def save_model(self):
+        now = datetime.datetime.now()
+        datetime_str = now.strftime("%Y-%m-%d_%H-%M-%S")
+        dir_path = f'{os.getcwd()}/model/' + datetime_str
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
         # 保存最佳模型
         for best_model in self._best_model:
             # 模型保存
-            joblib.dump(best_model, f'model/{best_model}.pkl')
+            joblib.dump(best_model, f'{dir_path}/{best_model}.pkl')
 
     def predict(self, data: DataFrame):
         drop_columns = list(set(self._target_fields) & set(data.columns))
@@ -195,6 +197,11 @@ class DataModeler:
 
     def save_predict(self, raw_data: DataFrame, data: DataFrame):
         logger.info('预测值保存开始.................')
+        now = datetime.datetime.now()
+        datetime_str = now.strftime("%Y-%m-%d_%H-%M-%S")
+        dir_path = os.path.dirname(self._save_predict_path) + datetime_str
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
         prediction_data = self.predict(data)
         result = pd.concat([prediction_data, raw_data], axis=1)
         result.to_csv(self._save_predict_path, index=False)

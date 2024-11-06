@@ -1,11 +1,11 @@
-from data_configuration import data_explorer_conf
-from tools import print_with_sep_line, get_fields
+from tools import print_with_sep_line
 import pandas as pd
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
 from tools import logger
+from data_configuration import Configuration
 
 # 配置.
 # 字段唯一值占比.
@@ -16,17 +16,17 @@ EXPLORE_RELATION = 'explore_relation'
 
 
 class DataExplorer:
-    def __init__(self, data: DataFrame) -> None:
+    def __init__(self, data: DataFrame, conf: Configuration) -> None:
         self._data = data
         self._data_size = len(data)
         self._field_info = DataFrame()
-
+        self._data_explorer_conf = conf.data_explorer_conf
         # 字段唯一值数量占比.
-        field_unique_ratio = data_explorer_conf.get(FIELD_UNIQUE_RATIO)
+        field_unique_ratio = self._data_explorer_conf.get(FIELD_UNIQUE_RATIO)
         self._field_unique_ratio = field_unique_ratio if field_unique_ratio else 0.001
 
         # 字段唯一值数量
-        field_unique_num = data_explorer_conf.get(FIELD_UNIQUE_NUM)
+        field_unique_num = self._data_explorer_conf.get(FIELD_UNIQUE_NUM)
         self._field_unique_num = field_unique_num if field_unique_num else 100
 
         from pandas.io.formats.info import DataFrameInfo
@@ -68,12 +68,12 @@ class DataExplorer:
         self._explore_field()
         self.explore_missing_value()
         self.explore_duplicate_value()
-        if data_explorer_conf.get(EXPLORE_RELATION):
+        if self._data_explorer_conf.get(EXPLORE_RELATION):
             self._explore_relation(self._data)
         self.print_summary()
 
         # 直方图.
-        explore_hist = data_explorer_conf.get(EXPLORE_HIST)
+        explore_hist = self._data_explorer_conf.get(EXPLORE_HIST)
         if explore_hist:
             self._histplot(self._data[self._hist_plot_field])
         logger.info('数据探索完成！！！！！！！！！！！！！！！！！！')
@@ -87,7 +87,7 @@ class DataExplorer:
         if head_num:
             n = head_num
         else:
-            n = data_explorer_conf.get('head_num')
+            n = self._data_explorer_conf.get('head_num')
         self._head_n_data = self._data.head(n).to_markdown()
         print_with_sep_line(f'前{n}行数据（shape：{self._data.shape}）')
         print(self._head_n_data)

@@ -1,0 +1,184 @@
+# ================================================================================================
+# 数据源配置.
+# ================================================================================================
+data_source:
+  type: file #数据源类型
+  format: txt # 文件的格式（支持excel、txt、csv）
+  field_sep: ',' # 字段（属性、特征）之间的分隔符.
+  train_path: ../data/sina/sina_train.csv
+  test_path: ../data/sina/sina_test_X.csv
+  header: 0 # 标题行.
+
+# ================================================================================================
+# 数据探索配置.
+#   head_num:
+#       打印数据的前多少行.
+#   class_fields：
+#       类别字段配置. 如果配置了类别字段，这些字段将被认定为是类别字段，其余字段为非类别字段.
+#       如果配置了类别字段，field_unique_ratio和field_unique_num失效.
+#   value_fields:
+#       数值字段配置. 如果配置了数值字段，这些字段将被认定为数值字段，其余字段为非类别字段.
+#   object_fields:
+#       对象字段配置. 如果配置了该类别字段，这些字段将被认定为对象字段，其余字段为非对象字段.
+#       非类别字段和数值字段都将被认定为是对象字段，例如文本型的字段.
+#   field_unique_ratio:
+#       字段唯一值个数占总行数的比例，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
+#   field_unique_num
+#       字段唯一值个数，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
+#   explore_hist:
+#       是否探索数据的直方图分布，取值true和false.
+#   explore_relation
+#       是否数据的相关性，取值true和false.
+# ================================================================================================
+data_explorer:
+  head_num: 10
+  field_unique_ratio: 0.001
+  field_unique_num: 100
+  explore_hist: false
+  explore_relation: false
+
+
+# ================================================================================================
+# 数据切分器配置
+# splitter:
+#   配置数据切分器，目前支持simple、KFold、LeaveOneOut、LeavePOut.
+#   simple：简单交叉验证.
+#   KFold：K折交叉验证.
+#   StratifiedKFold：分层K折交叉验证.
+#   LeaveOneOut：留一法交叉验证.
+#   LeavePOut：留P法交叉验证.
+# params:
+#   配置切分器参数，例如：train_size: 0.7, test_size: 0.3.
+#   simple: 可配置参数：train_size=0.7, test_size=0.4, random_state=0, shuffle=False.
+#           train_size也可以配置整数，表示样本个数.
+#   KFold: 可配置参数：n_splits=5, shuffle=False.
+#   StratifiedKFold：可配置参数：n_splits=5, shuffle=False.
+#   LeavePOut：可配置参数：p=1.
+# ================================================================================================
+data_splitter:
+  splitter: simple
+  params:
+    train_size: 0.7
+    shuffle: True
+    random_state: 42
+
+
+# ================================================================================================
+# 数据处理器配置
+# ================================================================================================
+data_processor:
+  # ------------------------------------------------------------------
+  # 字段选择器配置：
+  #   对字段进行选择，例如：删除一些不需要的字段.
+  # fields:
+  #   配置需要删除的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
+  # ------------------------------------------------------------------
+  field_selection:
+    fields: [ ]
+
+  # ------------------------------------------------------------------
+  # 字段清洗器配置：
+  #   对字段进行清洗，例如：对字段缺失值进行填充.
+  # fields:
+  #   配置需要删除的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
+  # ------------------------------------------------------------------
+  field_cleaner:
+    # 缺失值清洗.
+    na_cleaner:
+      - fields: [ text ] # 待清洗的字段名称列表.
+        clean_method: drop_na  # 对缺失值处理. drop、drop_na、fill。drop: 删除列。drop_na: 删除缺失值的行，fill：填充缺失值.
+        method: median  # 常数值（const）、均值（mean）、中位数（median）、众数（mode）
+        value:  # 填充的值，当method=const时生效.
+
+  # ------------------------------------------------------------------
+  # 字段转换器配置：
+  #   对字段进行转换，例如：对字段的所有值进行标准化. 转换器执行时按照配置的顺序执行.
+  #   转换器可以增加字段数，字段命名为：原字段名称_序号.
+  # fields:
+  #   配置需要进行转换的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
+  # transformers:
+  #   配置转换器
+  #   name: 配置转换器名称，支持如下转换器：
+  #       MinMaxScaler：最大最小标准化
+  #       StandardScaler：标准化.
+  #       TfidfVectorizer：文本词频-逆文档频率.
+  #       自定义转换器：需实现fit()、transform()
+  #   params: 配置转换器参数.
+  # ------------------------------------------------------------------
+  field_transformer:
+    - fields: [ channel_title ]
+      transformers:
+        - name:
+          params:
+    - fields: [ text ]
+      transformers:
+        - name: TfidfVectorizer
+          params: { max_features: 10 }
+        - name: SparseTransformer
+        - name: StandardScaler
+#          params: {with_mean: False}
+
+# ================================================================================================
+# 数据模型配置. 最佳模型：对于不同模型、不同参数，将根据评估指标选择对应的最佳模型.
+#
+# target_fields：
+#     配置目标字段，如果未配置目标字段，数据中的最后一个字段认定为是目标字段.
+# models:
+#     配置数据模型，可配置多个数据模型.
+#   estimator:
+#        模型名称，支持SVC等各种回归、分类模型.
+#   param_grid:
+#        配置模型参数，每个参数可配置多个值.
+# fine_tune:
+#     模型调优方法，支持：GridSearchCV（网格搜索）、RandomizedSearchCV（随机搜索）
+# assessments:
+#     评估方法配置.支持sklearn.metrics中评估指标.
+#     name:
+#       评估方法名称.支持如下：
+#         回归指标.
+#           mean_squared_error
+#           root_mean_squared_error
+#         分类指标：
+#           accuracy_score
+#           precision_score
+#           recall_score
+#           f1_score
+#           roc_auc_score
+#           classification_report
+#           confusion_matrix
+#     min_max:
+#       评估准则，根据评估指标的最大值还是最小值来判断最佳.
+#     params:
+#       评估方法的参数.
+# ================================================================================================
+data_modeler:
+  target_fields: [ channel_title ]
+  target_encoder:
+    name: LabelEncoder
+  models:
+    - estimator: SVC
+      param_grid: [ ]
+    - estimator: RandomForestClassifier
+  fine_tune: RandomizedSearchCV
+  assessments:
+    - name: accuracy_score
+      min_max: max
+      params:
+    - name: precision_score
+      min_max: max
+      params: { average: micro }
+    - name: f1_score
+      min_max: max
+      params: { average: micro }
+    #    - name: recall_score
+    #      min_max: max
+    #      params: { average: micro }
+#      - name: classification_report
+#        min_max: max
+#        params:
+#    - name: roc_auc_score
+#      min_max: max
+#      params: { multi_class: ovo }
+  save_predict:
+    path: result/predict_result.csv
+    target_name: [channel_title]
