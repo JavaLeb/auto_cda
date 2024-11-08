@@ -26,9 +26,9 @@ data_explorer:
   head_num: 10
   field_unique_ratio: 0.001
   field_unique_num: 100
-  explore_hist: true
+  explore_hist: false
   hist_plot_fields: [ ]
-  explore_relation: true
+  explore_relation: false
   relation_fields: [ ]
 
 
@@ -52,7 +52,7 @@ data_explorer:
 data_splitter:
   splitter: simple
   params:
-    train_size: 0.7
+    train_size: 0.8
     shuffle: True
     random_state: 42
 
@@ -78,11 +78,11 @@ data_processor:
   # ------------------------------------------------------------------
   field_cleaner:
     # 缺失值清洗.
-    na_cleaner:
+    na_cleaners:
       - fields: [ ] # 待清洗的字段名称列表.
         clean_method: drop_na  # 对缺失值处理. drop、drop_na、fill。drop: 删除列。drop_na: 删除缺失值的行，fill：填充缺失值.
-        method: median  # 常数值（const）、均值（mean）、中位数（median）、众数（mode）
-        value:  # 填充的值，当method=const时生效.
+        fill_method: median  # 常数值（const）、均值（mean）、中位数（median）、众数（mode）
+        fill_value:  # 填充的值，当method=const时生效.
 
   # ------------------------------------------------------------------
   # 字段转换器配置：

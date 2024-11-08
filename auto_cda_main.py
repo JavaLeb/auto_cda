@@ -17,6 +17,7 @@ if __name__ == '__main__':
 
     # 数据处理.
     data_processor = DataProcessor(conf=conf)
+    data_processor.clean_na_field(data)
     data = data_processor.process(data)
 
     # 数据切分.
