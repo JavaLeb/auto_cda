@@ -62,7 +62,6 @@ class DataProcessor:
         :param data: 待缺失值清洗数据.
         :return: 缺失值清洗后的数据.
         """
-
         for na_cleaner in self._na_cleaners_conf:
             fields = na_cleaner.get('fields')  # 获取清洗字段.
             if not fields:  # 没有配置.
