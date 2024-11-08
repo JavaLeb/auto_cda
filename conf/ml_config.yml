@@ -5,6 +5,7 @@ data_source:
   type: file #数据源类型
   format: txt # 文件的格式（支持excel、txt、csv）
   field_sep: ',' # 字段（属性、特征）之间的分隔符.
+  #  train_path: data\sina\sina_train.csv
   train_path: data\housing\housing.csv
   test_path: data\housing\housing.csv
   #  train_path: data\sina\sina_train.csv
@@ -16,29 +17,30 @@ data_source:
 # 数据探索配置.
 #   head_num:
 #       打印数据的前多少行.
-#   class_fields：
-#       类别字段配置. 如果配置了类别字段，这些字段将被认定为是类别字段，其余字段为非类别字段.
-#       如果配置了类别字段，field_unique_ratio和field_unique_num失效.
-#   value_fields:
-#       数值字段配置. 如果配置了数值字段，这些字段将被认定为数值字段，其余字段为非类别字段.
-#   object_fields:
-#       对象字段配置. 如果配置了该类别字段，这些字段将被认定为对象字段，其余字段为非对象字段.
-#       非类别字段和数值字段都将被认定为是对象字段，例如文本型的字段.
 #   field_unique_ratio:
 #       字段唯一值个数占总行数的比例，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
 #   field_unique_num
 #       字段唯一值个数，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
 #   explore_hist:
 #       是否探索数据的直方图分布，取值true和false.
+#   hist_plot_fields:
+#       探索直方图的字段，未配置默认全部字段.
 #   explore_relation
-#       是否数据的相关性，取值true和false.
+#       是否探索数据的相关性，数值型字段为两两相关性，取值true和false.
 # ===================================================================================================================
 data_explorer:
   head_num: 10
+
   field_unique_ratio: 0.001
   field_unique_num: 100
-  explore_hist: false
+
+  explore_hist: true
+  hist_plot_fields: [ 'longitude' ]
+
   explore_relation: false
+  relation_threshold: 0.5
+
+  duplicate_fields: [ ]
 
 
 # ===================================================================================================================
@@ -146,14 +148,14 @@ data_processor:
   #   params: 配置转换器的参数，格式: {param1: value1,param2: value2}.
   # ---------------------------------------------------------------------------------------------------------------
   field_transformer:
-      - fields: [ housing_median_age]
-        transformers:
-          - name: sklearn.preprocessing.KBinsDiscretizer
-            params:
-      - fields: [ ]
-        transformers:
-          - name:
-            params:
+    - fields: [ housing_median_age ]
+      transformers:
+        - name: sklearn.preprocessing.KBinsDiscretizer
+          params:
+    - fields: [ ]
+      transformers:
+        - name:
+          params:
 
 
 # ===================================================================================================================

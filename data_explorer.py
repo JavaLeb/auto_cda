@@ -1,12 +1,12 @@
-from tools import print_with_sep_line
+from tools import print_with_sep_line, is_int, is_float
 import pandas as pd
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 import seaborn as sns
-from collections import Counter
 from tools import logger
 from data_configuration import Configuration
 import numpy as np
+from pandas.io.formats.info import DataFrameInfo
 
 # 配置.
 # 字段唯一值占比.
@@ -14,52 +14,52 @@ FIELD_UNIQUE_RATIO = 'field_unique_ratio'
 FIELD_UNIQUE_NUM = 'field_unique_num'
 EXPLORE_HIST = 'explore_hist'
 EXPLORE_RELATION = 'explore_relation'
+DUPLICATE_FIELDS = 'duplicate_fields'
 
 
 class DataExplorer:
     def __init__(self, data: DataFrame, conf: Configuration) -> None:
-        self._data = data
-        self._data_size = len(data)
-        self._field_info = DataFrame()
+
         self._data_explorer_conf = conf.data_explorer_conf
-        # 字段唯一值数量占比.
-        field_unique_ratio = self._data_explorer_conf.get(FIELD_UNIQUE_RATIO)
-        self._field_unique_ratio = field_unique_ratio if field_unique_ratio else 0.001
 
-        # 字段唯一值数量
-        field_unique_num = self._data_explorer_conf.get(FIELD_UNIQUE_NUM)
-        self._field_unique_num = field_unique_num if field_unique_num else 100
+        # 获取配置：探索前几行，未配置或配置错误，默认为10.
+        self._head_num_conf = self._data_explorer_conf.get('head_num')
+        if not is_int(self._head_num_conf, 0):
+            self._head_num_conf = 10
 
-        from pandas.io.formats.info import DataFrameInfo
-        self._built_info = DataFrameInfo(data=self._data, memory_usage=True)
-        # 字段非空值总数统计、数据类型.
-        self._field_info = pd.concat([self._built_info.non_null_counts, self._built_info.dtypes], axis=1)
-        self._field_info.columns = ['Non-Null-Count', 'Dtype']
-        # 字段总行数统计
-        self._field_info['Total-Count'] = self._data_size
-        # 字段唯一值个数统计.
-        unique_count = self._data.nunique(dropna=False).rename('Unique-Count')
-        # 字段唯一值个数占比统计.
-        unique_count_ratio = unique_count / self._data_size
-        unique_count_ratio = unique_count_ratio.rename('Unique-Count-Ratio')
+        # 获取配置：字段唯一值数量阈值.
+        self._field_unique_num = self._data_explorer_conf.get(FIELD_UNIQUE_NUM)
+        if not is_int(self._field_unique_num, 0):
+            self._field_unique_num = 100
 
-        self._field_info = pd.concat([self._field_info, unique_count, unique_count_ratio], axis=1)
+        # 获取配置：字段唯一值数量占比阈值.
+        self._field_unique_ratio = self._data_explorer_conf.get(FIELD_UNIQUE_RATIO)
+        if not is_float(self._field_unique_ratio, 0):
+            self._field_unique_ratio = 0.001
 
-        self._desc = DataFrame()
-        self._data_summary = DataFrame()
+        # 获取配置：重复字段.
+        self._duplicate_fields = self._data_explorer_conf.get(DUPLICATE_FIELDS)
+        if not isinstance(self._duplicate_fields, list):  # 配置错误.
+            raise Exception(f'conf {DUPLICATE_FIELDS} error, only support a list')
+        if len(self._duplicate_fields) == 0:  # 未配置，默认全部字段.
+            self._duplicate_fields = data.columns.values
+        else:
+            self._duplicate_fields = list(data.columns & set(self._duplicate_fields))
+            if len(self._duplicate_fields) == 0:
+                raise Exception(f'conf {DUPLICATE_FIELDS} error, the conf not in data coloumns.')
 
-        self._head_n_data = None
+        # 获取配置：直方图配置.
+        self._explore_hist = self._data_explorer_conf.get(EXPLORE_HIST)
+        self._hist_plot_fields = self._data_explorer_conf.get('hist_plot_fields')
+        if not isinstance(self._hist_plot_fields, list):
+            raise Exception(f'conf hist_plot_fields error, need a list. {self._hist_plot_fields}')
+        if len(self._hist_plot_fields) > 0:
+            self._hist_plot_field = list(set(self._hist_plot_fields) & set(data.columns))
+            if len(self._hist_plot_field) == 0:
+                raise Exception(f'conf hist_plot_fields error, need column in data columns. {self._hist_plot_fields}')
 
-        self._field_type_list = []
-        self._object_field_list = []
-
-        self._hist_plot_field = self._data_explorer_conf.get('hist_plot_fields')
-        if self._hist_plot_field is not None:
-            self._hist_plot_field = list(set(self._hist_plot_field) & set(data.columns))
+        # 获取配置：关系探索配置.
         self._is_explore_relation = self._data_explorer_conf.get(EXPLORE_RELATION)
-        self._relation_fields = self._data_explorer_conf.get('relation_fields')
-        if self._relation_fields is not None:
-            self._relation_fields = list(set(self._relation_fields) & set(data.columns))
         self._relation_threshold = self._data_explorer_conf.get('relation_threshold')
         if self._relation_threshold is None:
             self._relation_threshold = 0.5
@@ -68,64 +68,102 @@ class DataExplorer:
                 self._relation_threshold = 1.0
             elif self._relation_threshold < -1:
                 self._relation_threshold = -1.0
-        self._missing_value_count = DataFrame()
-        self._missing_field = []
-        self._detail = []
 
-    def explore(self) -> DataFrame:
+        # 探索初始化.
+        self._data = data  # 数据初始化.
+        self._explore_head_flag = False  # 前几行探索标记初始化.
+        self._explore_missing_flag = False  # 缺失值探索标记初始化.
+        self._explore_duplicate_flag = False  # 重复值碳探索标记初始化.
+        self._field_info = DataFrame()  # 字段信息初始化.
+        self._class_field_info = []  # 类别字段信息.
+        self._value_field_info = DataFrame()  # 数值型字段信息.
+        self._data_info = DataFrame()  # 数据信息初始化.
+        self._duplicate_info = DataFrame()  # 重复值信息初始化.
+        self._head_n_data = DataFrame()  # 前n行数据初始化.
+        self._missing_field_info = DataFrame()  #
+        self._data_row_num = len(self._data)
+        self._built_info = DataFrameInfo(data=self._data, memory_usage=True)
+        self._field_type_list = []
+        self._class_field_list = []
+        self._value_field_list = []
+        self._object_field_list = []
+        self._missing_field = []
+
+        # 探索字段内置类型.
+        self._explore_field_built_type()
+        # 探索内置信息.
+        self._explore_built_info()
+
+    def _explore_built_info(self):
+        # 总行数.
+        self._data_info['total-lines'] = [len(self._built_info.data)]
+        # 总列数.
+        self._data_info['total-columns'] = [self._built_info.col_count]
+        # 数据类型.
+        dtypes = ",".join([str(key) + "(" + str(value) + ")" for key, value in self._built_info.dtype_counts.items()])
+        self._data_info['dtypes'] = [dtypes]
+        # 内存使用.
+        self._data_info['memory-usage'] = [self._built_info.memory_usage_string.rstrip("\n")]
+
+    def explore(self):
         """
         全面探索数据信息.
         :return:
         """
         logger.info('开始数据探索....................')
-        self.explore_head_n()
-        self._explore_desc()
-        self._explore_field()
-        self.explore_missing_value()
-        self.explore_duplicate_value()
+        # 打印前n行数据.
+        self.explore_head_info()
+        # 探索字段.
+        self.explore_field_info()
+        # 探索缺失值.
+        self.explore_missing_info()
+        # 探索重复值.
+        self.explore_duplicate_info()
+
         if self._is_explore_relation:
             if self._relation_fields:
                 self._explore_relation(self._data[self._relation_fields])
             else:
                 self._explore_relation(self._data)
-        self.print_summary()
 
         # 直方图.
-        explore_hist = self._data_explorer_conf.get(EXPLORE_HIST)
-        if explore_hist:
+        if self._explore_hist:
             if self._hist_plot_field:
                 self._histplot(self._data[self._hist_plot_field])
             else:
                 self._histplot(self._data)
         logger.info('数据探索完成！！！！！！！！！！！！！！！！！！')
-        return self._field_info
 
-    def explore_head_n(self, head_num: int = None) -> str | None:
+        self.print_summary()
+
+    def explore_head_info(self, head_num: int = None) -> DataFrame:
         """
         探索前几行数据.
         :return:
         """
+        if self._explore_head_flag:
+            return self._head_n_data
+
         if head_num:
-            n = head_num
+            if not isinstance(head_num, int) or head_num < 1:
+                raise Exception(
+                    f'Method parameter error, not support head_num={head_num}, need an integer greater than 0.')
         else:
-            n = self._data_explorer_conf.get('head_num')
-        self._head_n_data = self._data.head(n).to_markdown()
-        print_with_sep_line(f'前{n}行数据（shape：{self._data.shape}）')
-        print(self._head_n_data)
+            head_num = self._head_num_conf
+        self._head_n_data = self._data.head(head_num)
+
+        # 超过100个字段，缩略打印，否则展开打印.
+        print_with_sep_line(f'前{head_num}行数据（shape={self._data.shape}）：')
+        if len(self._head_n_data.columns) > 100:
+            print(self._head_n_data)
+        else:
+            print(self._head_n_data.to_markdown())
+
+        self._explore_head_flag = True
 
         return self._head_n_data
 
-    def _explore_desc(self) -> None:
-        """
-        探索数据的描述信息.
-        :return: None.
-        """
-
-        self._desc = self._data.describe().transpose()
-        self._desc.columns = [str(col) + '_desc' for col in self._desc.columns]
-        self._field_info = pd.concat([self._field_info, self._desc], axis=1)
-
-    def _explore_field(self) -> None:
+    def explore_field_info(self) -> (DataFrame, DataFrame):
         """
         探索类别字段描述统计信息.
         字段类型（CLASS、VALUE、TEXT）判断规则：
@@ -134,112 +172,199 @@ class DataExplorer:
         :return:
         """
 
-        # 字段类型判断（CLASS、VALUE、OBJECT）.
-        # 类别字段判断.
-        unique_num = self._data.nunique(dropna=False)  # 计算列中唯一值的个数.
-        max_threshold = max(self._field_unique_ratio * len(self._data), self._field_unique_num)
-        self._class_field_list = unique_num[unique_num <= max_threshold].index.to_list()
+        # 字段非空值总数、数据类型.
+        built_info = pd.concat([self._built_info.non_null_counts, self._built_info.dtypes], axis=1)
+        built_info.columns = ['Non-Null-Count', 'Dtype']
+        self._field_info = pd.concat([self._field_info, built_info], axis=1)
+        # 字段总行数统计
+        self._field_info['Total-Count'] = self._data_row_num
+        self._field_info['Unique-Count(NA Included)'] = self._unique_count
+        # 字段唯一值个数占比统计.
+        unique_count_ratio = self._unique_count / self._data_row_num
+        self._field_info['Unique-Count-Ratio'] = unique_count_ratio
+        self._field_info['Ftype'] = self._field_type_list
 
+        # 探索类别字段.
+        self.explore_class_field()
+        # 探索数值字段.
+        self.explore_value_field()
+        # 探索类别字段.
+        self.explore_object_field()
+
+        return self._data_info, self._field_info
+
+    def explore_class_field(self, class_fields: list = None) -> (DataFrame, DataFrame):
+        if class_fields:
+            class_fields = list(set(self._data.columns) & set(class_fields))
+            if len(class_fields) == 0:
+                raise Exception('class_fields error，only support fields in data columns.')
+        else:
+            class_fields = self._class_field_list
+        for field in class_fields:
+            # 类别字段每个值的总数统计.
+            value_count = self._data[field].value_counts(dropna=False)
+            # 类别字段每个值的占比统计
+            value_ratio = self._data[field].value_counts(normalize=True, dropna=False)
+            count_ratio = pd.concat([value_count, value_ratio], axis=1)
+            count_ratio = count_ratio.reset_index(drop=False)
+            count_ratio.columns = ['class_value', 'count-NA-included', 'proportion-NA-included']
+            self._class_field_info.append(count_ratio)
+        self._data_info['class-fields-count'] = [len(class_fields)]
+
+        print_with_sep_line('类别型字段摘要信息：')
+        for i in range(len(class_fields)):
+            print(f'类别型字段名称：{class_fields[i]}，唯一值总数：{len(self._class_field_info[i])}')
+            print(self._class_field_info[i].to_markdown())
+
+        return self._data_info, self._class_field_info
+
+    def explore_value_field(self, value_fields: list = None) -> (DataFrame, DataFrame):
+        if value_fields:
+            value_fields = list(set(self._data.columns) & set(value_fields))
+            if len(value_fields) == 0:
+                raise Exception('value_fields error，only support fields in data columns.')
+        else:
+            value_fields = self._value_field_list
+
+        data = self._data[value_fields]
+        mean_values = data.mean()
+        min_values = data.min()
+        max_values = data.max()
+        std_values = data.std()
+        # 计算(u-3σ)和(u+3σ)
+        lower_bound = mean_values - 3 * std_values
+        upper_bound = mean_values + 3 * std_values
+        self._value_field_info['min'] = min_values
+        self._value_field_info['max'] = max_values
+        self._value_field_info['mean'] = mean_values
+        self._value_field_info['std'] = std_values
+        self._value_field_info['mean-3sigma'] = lower_bound
+        self._value_field_info['mean+3sigma'] = upper_bound
+        outliers_count = data.apply(
+            lambda col: ((col < lower_bound[col.name]) | (col > upper_bound[col.name]))
+        )
+        self._value_field_info['outlier-count'] = outliers_count.sum()
+
+        # 计算每个字段第一个缺失值的索引.
+        outlier_first_index = outliers_count.idxmax(axis=0)  # 计算每列中第一个缺失值的索引.
+        outlier_first_index = outlier_first_index.astype(str)
+        outlier_first_index[outliers_count.sum(axis=0) <= 0] = ''  # 将不含缺失值的列的索引初始化为空.
+        self._value_field_info['outlier-first-index'] = outlier_first_index
+
+        print_with_sep_line('数值型字段摘要信息：')
+        print(self._value_field_info.to_markdown())
+
+        return self._data_info, self._value_field_info
+
+    def explore_object_field(self):
+        # 字段类型个数统计.
+        self._data_info['object-field-count'] = [len(self._object_field_list)]
+
+    def explore_missing_info(self) -> (DataFrame, DataFrame):
+        """
+        探索缺失值.
+        :return: 缺失值的总体信息和详细信息.
+        """
+        if self._explore_missing_flag:
+            return self._data_info, self._missing_field_info
+
+        # is_na的形状与self._data相同，只是缺失值对应的值为True，非缺失值对应的值为False.
+        is_na = self._data.isna()
+        # 计算每个字段缺失值的个数，无缺失值的字段统计结果为0.
+        missing_value_count = is_na.sum(axis=0)
+        self._missing_field_info['Missing-Value-Count'] = missing_value_count  # 按列求和.
+        self._missing_field_info['Missing-Value-Ratio'] = missing_value_count / self._data_row_num
+        # 计算每个字段第一个缺失值的索引.
+        na_first_index = is_na.idxmax(axis=0).astype(str)  # 计算每列中第一个缺失值的索引.
+        na_first_index[missing_value_count <= 0] = ''  # 将不含缺失值的列的索引初始化为空.
+        self._missing_field_info['First-Missing-Index'] = na_first_index
+
+        # 计算缺失值字段的总个数.
+        self._missing_field = missing_value_count[missing_value_count > 0]
+        self._data_info['total-missing-field'] = [len(self._missing_field)]
+
+        self._field_info = pd.concat([self._field_info, self._missing_field_info], axis=1)
+        self._explore_missing_flag = True
+
+        return self._data_info, self._field_info
+
+    def explore_duplicate_info(self, duplicated_fields: list = None) -> (DataFrame, DataFrame):
+        """
+        重复值探索.
+        :param duplicated_fields: 重复字段.
+        :return: 重复值探索的总体信息和详细信息.
+        """
+        if self._explore_duplicate_flag:
+            return self._data_info, self._duplicate_info.head(1)
+
+        if duplicated_fields:
+            duplicated_fields = list(set(self._data.columns) & set(duplicated_fields))
+            if len(duplicated_fields) >= 0:
+                self._duplicate_fields = duplicated_fields
+        # duplicates 只有一列，值为True或False，True表示该行为重复行.
+        is_duplicates = self._data.duplicated(subset=self._duplicate_fields)
+        duplicates = is_duplicates[is_duplicates]
+        self._data_info['total-duplicate-count'] = [len(duplicates)]
+        self._data_info['duplicate-fields'] = str(self._duplicate_fields)
+        # 获取重复数据.
+        if len(duplicates) > 0:
+            self._duplicate_info = self._data.loc[duplicates.index]
+            print_with_sep_line('重复数据详细信息：')
+            print(self._duplicate_info)
+
+        self._explore_duplicate_flag = True
+
+        return self._data_info, self._duplicate_info.head(1)
+
+    def _explore_field_built_type(self):
+        # 字段唯一值个数统计（含缺失值）.
+        self._unique_count = self._data.nunique(dropna=False)
+        # 类别字段判断：字段唯一值的个数或者占比不大于设定的阈值被认定为类别字段.
+        max_threshold = max(self._field_unique_ratio * self._data_row_num, self._field_unique_num)
+        self._class_field_list = self._unique_count[self._unique_count <= max_threshold].index.to_list()
+        # 字段类型判断（CLASS、VALUE、OBJECT）.
         for col in self._data.columns:
             dtype = str(self._built_info.dtypes[col])
             if col in self._class_field_list:
                 self._field_type_list.append('CLASS')
             elif dtype.startswith('float') or dtype.startswith('int'):
                 self._field_type_list.append('VALUE')
+                self._value_field_list.append(col)
             elif dtype.startswith('object'):
                 try:
                     pd.to_numeric(self._data[col], errors='raise')
                     self._field_type_list.append('VALUE')
+                    self._value_field_list.append(col)
                 except ValueError:
                     self._field_type_list.append('OBJECT')
                     self._object_field_list.append(col)
             else:
-                raise Exception(f'无法确认字段[{col}]的类型')
-
-        field_type = pd.Series(self._field_type_list, index=self._data.columns).rename('Ftype')
-        self._field_info = pd.concat([self._field_info, field_type], axis=1)
-
-        # 数据摘要信息.
-        # 总列数.
-        self._data_summary['total-columns'] = [self._built_info.col_count]
-        # 总行数.
-        self._data_summary['total-lines'] = [len(self._built_info.data)]
-        # 数据类型.
-        dtypes = ",".join([str(key) + "(" + str(value) + ")" for key, value in self._built_info.dtype_counts.items()])
-        self._data_summary['dtypes'] = [dtypes]
-        # 字段类型.
-        ftypes = ",".join([str(key) + ":" + str(value) for key, value in Counter(self._field_type_list).items()])
-        self._data_summary['ftypes'] = [f'{self._built_info.col_count}({ftypes})']
-        # 内存使用.
-        memory_usage_string = self._built_info.memory_usage_string.rstrip("\n")
-        self._data_summary['memory-usage'] = [memory_usage_string]
-
-        self._explore_class_field()
-
-    def _explore_class_field(self) -> None:
-        for field in self._class_field_list:
-            value_count = self._data[field].value_counts(dropna=False)
-            value_ratio = self._data[field].value_counts(normalize=True, dropna=False)
-            count_ratio = pd.concat([value_count, value_ratio], axis=1)
-            count_ratio = count_ratio.reset_index(drop=False)
-            self._detail.append('_' * 50)
-            self._detail.append(f"类别字段[{field}]频率和占比分析：\n(类别数：{len(count_ratio)})")
-            self._detail.append(count_ratio)
-
-    def explore_missing_value(self) -> None:
-        """
-        探索缺失值.
-        :return:
-        """
-        # is_na的形状与self._data相同，只是缺失值为True，非缺失值为False.
-        is_na = self._data.isna()
-        self._missing_value_count = is_na.sum()  # 计算每个字段缺失值的个数，无缺失值的字段统计结果为0.
-        self._missing_value_count = self._missing_value_count.rename('Missing-Value-Count')
-
-        na_first_index = is_na.idxmax(axis=0).astype(str)  # 计算每列中第一个缺失值的索引.
-        na_first_index = na_first_index.rename('First-Missing-Index')
-        na_first_index[self._missing_value_count <= 0] = 'None'  # 将不含缺失值的列的索引初始化为空.
-        self._missing_field = self._missing_value_count[self._missing_value_count > 0]
-        self._field_info = pd.concat([self._field_info, self._missing_value_count, na_first_index], axis=1)
-
-        self._data_summary['total-missing-field'] = [len(self._missing_field)]
-        if len(self._missing_field) > 0:
-            self._detail.append('_' * 50)
-            self._detail.append(f'缺失值详细信息：\n{self._missing_field.to_markdown()}')
-
-    def explore_duplicate_value(self):
-        duplicates = self._data.duplicated()
-        duplicates = duplicates[duplicates == True]
-        self._data_summary['total-duplicate-value'] = [len(duplicates)]
-        if len(duplicates) > 0:
-            self._detail.append('_' * 50)
-            self._detail.append(f'重复数据详细信息（部分重复数据）：\n{self._data.loc[duplicates.head(10).index]}')
+                raise Exception(f'无法确认数据类型[{dtype}]的字段[{col}]的类别')
 
     def _explore_relation(self, data: DataFrame):
         # 进行相关性分析前，需要将文本字段删除.
-        if self._object_field_list:
-            corr_matrix = data.drop(self._object_field_list, axis=1).corr()
-        else:
-            corr_matrix = data.corr()
-        self._detail.append('_' * 50)
-        self._detail.append(f'数据的相关性矩阵：\n{corr_matrix.to_markdown()}')
+        if self._value_field_list:  # 数值型变量相关性分析.
+            corr_matrix = data[self._value_field_list].corr()
+            # 提取大于阈值的元素
+            upper_tri_mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+            result = corr_matrix.where(upper_tri_mask)
+            # 筛选出大于阈值的数据
+            cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
+            cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
+            print_with_sep_line(f'数据的相关性矩阵：\n{corr_matrix.to_markdown()}')
+            # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
+            print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result)
 
-        # 提取大于阈值的元素
-        upper_tri_mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
-        result = corr_matrix.where(upper_tri_mask)
-        # 筛选出大于阈值的数据
-        cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
-        cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
-        # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
-        print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result)
+            # 热力图.
+            sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
+            plt.title('matrix relation')
+            # 两个变量之间的散点图.
+            pd.plotting.scatter_matrix(data, figsize=(20, 10))
+            plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 调整每个图之间的距离.
+            plt.show()
 
-        # 热力图.
-        sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
-        plt.title('matrix relation')
-        # 两个变量之间的散点图.
-        pd.plotting.scatter_matrix(data, figsize=(20, 10))
-        plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 调整每个图之间的距离.
-        plt.show()
+        if self._class_field_list:  # 类别型变量与目标变量相关性分析.
+            pass
 
     def _histplot(self, data: DataFrame = None) -> None:
         row_num, col_num = 3, 4  # 一个图的行数和列数.
@@ -258,10 +383,9 @@ class DataExplorer:
         plt.show()
 
     def print_summary(self) -> None:
-        print_with_sep_line('数据的摘要信息：')
-        print(self._data_summary.to_markdown())
-        print_with_sep_line('数据列的摘要信息：\n', self._field_info.to_markdown())
 
-        print_with_sep_line('数据的详细信息：')
-        for s in self._detail:
-            print(s)
+        print_with_sep_line('数据整体摘要信息：')
+        print(self._data_info.to_markdown())
+
+        print_with_sep_line('数据列的摘要信息：')
+        print(self._field_info.to_markdown())

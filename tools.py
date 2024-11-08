@@ -81,6 +81,14 @@ def package():
                 zipf.write(path, arc_name)
 
 
+def is_int(param, min_value):
+    return True if isinstance(param, int) and param > min_value else False
+
+
+def is_float(param, min_value):
+    return True if isinstance(param, float) and param > min_value else False
+
+
 if __name__ == '__main__':
     # 调用打包函数
     package()
