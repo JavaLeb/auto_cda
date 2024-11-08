@@ -4,9 +4,10 @@
 data_source:
   type: file #数据源类型
   format: txt # 文件的格式（支持excel、txt、csv）
-  field_sep: ',' # 字段（属性、特征）之间的分隔符.
+  field_sep: '\t' # 字段（属性、特征）之间的分隔符.
   #  train_path: data\sina\sina_train.csv
-  train_path: data\housing\housing.csv
+  train_path: data/zhengqi/zhengqi_train.txt
+  #  train_path: data\housing\housing.csv
   test_path: data\housing\housing.csv
   #  train_path: data\sina\sina_train.csv
   #  test_path: data\sina\sina_test_X.csv
@@ -29,17 +30,24 @@ data_source:
 #       是否探索数据的相关性，数值型字段为两两相关性，取值true和false.
 # ===================================================================================================================
 data_explorer:
-  target_fields: [ ]
+  target_field:
   head_num: 10
 
   field_unique_ratio: 0.001
-  field_unique_num: 100
+  field_unique_num: 50
 
-  explore_hist: true
-  hist_plot_fields: [ 'longitude' ]
+  explore_hist: false
+  hist_plot_fields: [ ]
+
+  explore_box: false
+  box_plot_fields: [ ]
+
+  explore_qq: false
+  qq_plot_fields: [ ]
 
   explore_relation: false
   relation_threshold: 0.5
+  target_relation_fields: [ ]
 
   duplicate_fields: [ ]
 
@@ -179,8 +187,8 @@ data_processor:
 #     name:
 #       评估方法名称.支持如下：
 #         回归指标.
-#           mean_squared_error
-#           root_mean_squared_error
+#           mean_squared_error: 均方误差.
+#           root_mean_squared_error:
 #         分类指标：
 #           accuracy_score
 #           precision_score
