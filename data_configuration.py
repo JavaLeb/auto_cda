@@ -22,12 +22,12 @@ class Configuration:
         # 配置加载.
         logger.info(f'开始加载配置{conf_path}....................')
         conf_parser = ConfParser(conf_path=conf_path)
-        conf = conf_parser.parse()
-        self._data_explorer_conf = conf.get('data_explorer')
-        self._data_source_conf = conf.get('data_source')
-        self._data_splitter_conf = conf.get('data_splitter')
-        self._data_processor_conf = conf.get('data_processor')
-        self._data_modeler_conf = conf.get('data_modeler')
+        self._conf = conf_parser.parse()
+        self._data_explorer_conf = self._conf.get('data_explorer')
+        self._data_source_conf = self._conf.get('data_source')
+        self._data_splitter_conf = self._conf.get('data_splitter')
+        self._data_processor_conf = self._conf.get('data_processor')
+        self._data_modeler_conf = self._conf.get('data_modeler')
         logger.info(f'配置{conf_path}加载成功！！！！！！！！！！！！！！！！！！！！')
 
     @property
@@ -49,3 +49,7 @@ class Configuration:
     @property
     def data_modeler_conf(self):
         return self._data_modeler_conf
+
+    @property
+    def conf(self):
+        return self._conf

@@ -4,15 +4,21 @@
 data_source:
   type: file #数据源类型
   format: txt # 文件的格式（支持excel、txt、csv）
-  field_sep: '\t' # 字段（属性、特征）之间的分隔符.
-  #  train_path: data\sina\sina_train.csv
-  train_path: data/zhengqi/zhengqi_train.txt
-  #  train_path: data\housing\housing.csv
+  field_sep: ',' # 字段（属性、特征）之间的分隔符.
+  #    train_path: data\sina\sina_train.csv
+  #  train_path: data/zhengqi/zhengqi_train.txt
+  train_path: data\housing\housing.csv
   test_path: data\housing\housing.csv
   #  train_path: data\sina\sina_train.csv
   #  test_path: data\sina\sina_test_X.csv
   #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
   header: 0 # 标题行.
+
+
+global:
+  target_field:
+  class_fields: [ ]
+  class_text_fields: [ ]
 
 # ===================================================================================================================
 # 数据探索配置.
@@ -30,7 +36,7 @@ data_source:
 #       是否探索数据的相关性，数值型字段为两两相关性，取值true和false.
 # ===================================================================================================================
 data_explorer:
-  target_field:
+
   head_num: 10
 
   field_unique_ratio: 0.001
@@ -84,12 +90,26 @@ data_processor:
   # ---------------------------------------------------------------------------------------------------------------
   # 字段选择器配置：
   #   对字段进行选择，例如：删除一些不需要的字段.
+  #   字段选择的方法：
+  #     1、方差阈值化：
+  #           （1）如果特征字段是数值型，可计算该字段的方差，如果方差很小，低于设定的阈值，表示该字段重要性很低，可删除.
+  #           （2）如果特征字段是二元类别，方差计算var(x)=p(1-p).
+  #           注意：不可事先做中心化、标准化等.
+  #     2、利用统计检验，目标字段是类别型（分类问题）：
+  #           （1）输入字段是数值型：卡方检验.
+  #           （2）输入字段是类别型：ANOVA检验和T检验.
+  #     3、相关性系数，目标字段和非目标字段都是数值型.
+  #     4、模型的方式：使用决策树、随机森林、XGBoost以及逻辑回归中的逐步回归.
   # fields:
   #   配置需要删除的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
   # ---------------------------------------------------------------------------------------------------------------
   field_selection:
-    fields: [ ]
-
+    fields: [ 'V5','V9','V11','V17','V22','V28' ]
+    variance_threshold_selection:
+      - fields: [ longitude ]
+        threshold: 1000000
+      - fields: [ ]
+        threshold:
   # ---------------------------------------------------------------------------------------------------------------
   # 字段清洗器配置. 例如：对字段缺失值进行填充.
   #   na_cleaner:
@@ -142,6 +162,13 @@ data_processor:
   #   转换器可以将一个字段变为多个字段，例如独特编码，新字段命名方式为：原字段名称_序号.
   #   如果一个字段通过某个转换器变成多个字段，后续的转换器将作用于多个字段.
   #   转换仅支持字段的值依赖当前的列.
+  #   特征的转换方法：
+  #     1、线性特征转换：
+  #         （1）与目标字段无关的转换：PCA、SVD、TSVD、矩阵分解NMF，
+  #         （2）与目标字段相关的转换：LDA.
+  #     2、非线性特征转换：
+  #         （1）与目标字段无关的转换：Kenerl PCA、t-SNE
+  #         （2）与目标字段有关的转换：神经网络.
   # fields:
   #   配置需要进行转换的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
   # transformers:
@@ -159,15 +186,29 @@ data_processor:
   #   params: 配置转换器的参数，格式: {param1: value1,param2: value2}.
   # ---------------------------------------------------------------------------------------------------------------
   field_transformer:
-    - fields: [ housing_median_age ]
-      transformers:
-        - name: sklearn.preprocessing.KBinsDiscretizer
-          params:
-    - fields: [ ]
-      transformers:
-        - name:
-          params:
-
+    pipeline:
+      steps:
+        - step:
+            name: pre
+            column_transformer:
+              transformers:
+                - name: standard_scaler
+                  transformer:
+                    instance: StandardScaler
+                    params:
+                  fields: [ 'V0', 'V1' ]
+                - name: min_max_scaler
+                  transformer:
+                    instance: MinMaxScaler
+                    params:
+                  fields: [ 'V2', 'V3' ]
+              params:
+        - step:
+            name: pca
+            transformer:
+              instance: PCA
+              params: { n_components: 0.9 }
+      params:
 
 # ===================================================================================================================
 # 数据模型配置. 最佳模型：对于不同模型、不同参数，将根据评估指标选择对应的最佳模型.

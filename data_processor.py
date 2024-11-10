@@ -12,6 +12,12 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import numpy as np
 from typing import Union
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer, make_column_transformer
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.decomposition import PCA
+from sklearn.feature_selection import VarianceThreshold
 
 # 配置.
 ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
@@ -27,6 +33,7 @@ transformer_dic = {
 
 class DataProcessor:
     def __init__(self, conf: Configuration):
+        self._conf = conf.conf
         # 获取配置.
         self._data_processor_conf = conf.data_processor_conf
         # 一级配置.
@@ -49,7 +56,64 @@ class DataProcessor:
         if drop_fields:
             data = data.drop(drop_fields, axis=1)
 
+        # 方差阈值选择特征.
+        data = self.variance_threshold(data)
+
         return data
+
+    def variance_threshold(self, data: DataFrame):
+        data_copy = data.copy()
+        print(f"方差阈值特征选择前，原始特征数量: {len(data_copy.columns)}")
+
+        # 文本类别字段需要编码，object字段不需要删除.
+        class_text_fields = self._conf['global']['class_text_fields']
+        object_fields = self._conf['global']['object_fields']
+
+        if len(class_text_fields) > 0:
+            label_encoder = LabelEncoder()
+            for field in class_text_fields:
+                data_copy[field] = label_encoder.fit_transform(data_copy[field])
+
+        # 先找出方差为0的字段.
+        deleted_features_set = set()
+        vt = VarianceThreshold(threshold=0)
+        try:
+            vt.fit_transform(data_copy)
+        except ValueError as e:
+            print('所有特征将会被删除，这是不允许的！', e)
+        variances = vt.variances_
+        deleted_features = [feature for feature, variance in zip(data_copy.columns, variances) if variance <= 0]
+        deleted_features_set.update(set(deleted_features))
+
+        # 再找出配置的字段.
+        variance_threshold_selection = self._field_selection_conf.get('variance_threshold_selection')
+        if variance_threshold_selection is None:
+            raise Exception('请配置参数 variance_threshold_selection')
+        for variance_threshold in variance_threshold_selection:
+            fields = variance_threshold.get('fields')
+            if fields is None or len(fields) == 0:
+                continue
+            fields = list(set(data_copy.columns) & set(fields) - set(object_fields))  # 需要排序类别字段.
+            if fields is None or len(fields) == 0:
+                continue
+            threshold = variance_threshold.get('threshold')
+            # 阈值方差结果至少有一列，否则报错.
+            vt = VarianceThreshold(threshold=threshold)
+            try:
+                vt.fit_transform(data_copy[fields])
+                variances = vt.variances_
+                deleted_features = [feature for feature, variance in zip(fields, variances) if variance < threshold]
+            except ValueError:
+                deleted_features = fields
+            if deleted_features:
+                deleted_features_set.update(deleted_features)
+        # 统一删除.
+        if deleted_features_set:
+            data_copy = data_copy.drop(columns=list(deleted_features_set))
+        print(f'方差阈值特征选择，删除的特征数：{len(deleted_features_set)}')
+        print(f"方差阈值特征选择后，特征数量: {len(data_copy.columns)}")
+
+        return data_copy
 
     def clean_field(self, data: DataFrame = None):
         data = self.clean_na_field(data)
@@ -70,7 +134,7 @@ class DataProcessor:
             if not fields:  # 配置的非数据的字段.
                 continue
             fields = data[fields].isna().any().loc[lambda x: x].index
-            if len(fields)==0:
+            if len(fields) == 0:
                 continue
             clean_method = na_cleaner.get('clean_method')  # 获取清洗方法.
             if not clean_method:  # 未配置清洗方法.
@@ -177,6 +241,24 @@ class DataProcessor:
             raise Exception(f'缺失值清洗错误，清洗参数配置错误！参数信息：{fill_params}，异常信息：{e}')
 
     def transform_field(self, data: DataFrame = None) -> DataFrame:
+
+        # if not self._field_transformer_conf:  # 如果未配置了转换器.
+        #     return data
+
+        # 这里根据需要自定义实现转换逻辑：Pipeline + ColumnTransformer.
+        # 暂未做到配置化.
+        transformer = Pipeline(steps=[
+            ('pre', ColumnTransformer(transformers=[
+                ('standard_scaler', StandardScaler(), ['V0', 'V1']),
+                ('min_max_scaler', MinMaxScaler(), ['V2', 'V3'])
+            ], remainder='passthrough')),
+            ('pca', PCA(n_components=0.9))
+        ])
+        result = transformer.fit_transform(data)
+
+        return result
+
+    def transform_field_back(self, data: DataFrame = None) -> DataFrame:
 
         if not self._field_transformer_conf:  # 如果配置了转换器.
             return data

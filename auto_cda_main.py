@@ -5,6 +5,95 @@ from data_processor import DataProcessor
 from data_modeler import DataModeler
 import pandas as pd
 from data_configuration import Configuration
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.compose import ColumnTransformer, make_column_transformer
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.decomposition import PCA
+
+conf = Configuration(conf_path=r'conf/ml_config.yml')
+root = conf.data_processor_conf.get('field_transformer')
+
+
+class PipelineNode:
+    def __init__(self):
+        self._id = None
+        self._type = 'pipeline'
+        self._params = None
+        self._step_names = []
+
+    def id(self):
+        return self._id
+
+    def type(self):
+        return self._type
+
+
+class ColumnTransformerNode:
+    def __init__(self):
+        self._id = None
+        self._type = 'column_transformer'
+        self._params = None
+        self._name_fields = []
+
+    def id(self):
+        return self._id
+
+    def type(self):
+        return self._type
+
+
+class TransformerNode:
+    def __init__(self):
+        self._id = None
+        self._type = 'transformer'
+        self._params = None
+        self._instance = None
+
+    def id(self):
+        return self._id
+
+    def type(self):
+        return self._type
+
+
+def traverse_nested_dict(nested_dict, current_path=None):
+    if current_path is None:
+        current_path = []
+
+    for key, value in nested_dict.items():
+        new_path = current_path + [key]
+        if isinstance(value, dict):
+            traverse_nested_dict(value, new_path)
+        else:
+            print(new_path)
+
+
+# traverse_nested_dict(root)
+def get_conf(root, ):
+    keys = root.keys()
+    if 'pipeline' in keys:
+        pass
+
+
+# get_conf(root)
+
+
+class PCATransformer(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+
+    def fit(self, X, y=None):
+        self.n_features_in_ = X.shape[1]
+        # self.feature_names_in_ = X.columns
+        return self
+
+    def transform(self, X):
+        pca = PCA(n_components=0.9)
+        result = pca.fit_transform(X)
+
+        return result
+
 
 if __name__ == '__main__':
     conf = Configuration(conf_path=r'conf/ml_config.yml')
@@ -16,10 +105,9 @@ if __name__ == '__main__':
     data_explorer = DataExplorer(data, conf=conf)
     data_explorer.explore()
 
-    # data_explorer.explore()
+    data_processor = DataProcessor(conf=conf)
+    data = data_processor.process(data)
 
-    # data_processor = DataProcessor(conf=conf)
-    # data = data_processor.process(data)
     #
     # # 数据切分.
     # data_splitter = DataSplitter(conf=conf)

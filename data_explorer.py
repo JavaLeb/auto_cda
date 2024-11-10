@@ -22,6 +22,7 @@ DUPLICATE_FIELDS = 'duplicate_fields'
 
 class DataExplorer:
     def __init__(self, data: DataFrame, conf: Configuration) -> None:
+        self._conf = conf.conf
         self._data = data  # 数据初始化.
         self._data_explorer_conf = conf.data_explorer_conf
 
@@ -109,9 +110,14 @@ class DataExplorer:
         self._data_row_num = len(self._data)
         self._built_info = DataFrameInfo(data=self._data, memory_usage=True)
         self._field_type_list = []
-        self._class_field_list = []
-        self._value_field_list = []
-        self._object_field_list = []
+        # 所有字段 = class + value + object.
+        self._class_field_list = []  # 类别字段（文本、数值型等）.
+        self._value_field_list = []  # 数值字段（数值型的非类别字段）
+        self._object_field_list = []  # 非类别、非数值字段.
+        # 类别字段中，可分为文本和数值型，文本型处理前通常需要编码. class = class_text + class_value
+        self._class_text_field_list = []
+        self._class_value_field_list = []
+
         self._missing_field = []
 
         # 探索字段内置类型.
@@ -368,6 +374,10 @@ class DataExplorer:
             dtype = str(self._built_info.dtypes[col])
             if col in self._class_field_list:
                 self._field_type_list.append('CLASS')
+                if dtype.startswith('float') or dtype.startswith('int'):
+                    self._class_value_field_list.append(col)
+                else:
+                    self._class_text_field_list.append(col)
             elif dtype.startswith('float') or dtype.startswith('int'):
                 self._field_type_list.append('VALUE')
                 self._value_field_list.append(col)
@@ -381,8 +391,30 @@ class DataExplorer:
                     self._object_field_list.append(col)
             else:
                 raise Exception(f'无法确认数据类型[{dtype}]的字段[{col}]的类别')
+        self._conf['global'] = {}
+        self._conf['global']['class_fields'] = self._class_field_list
+        self._conf['global']['class_text_fields'] = self._class_text_field_list
+        self._conf['global']['class_value_fields'] = self._class_value_field_list
+        self._conf['global']['object_fields'] = self._object_field_list
 
     def _explore_relation_info(self, data: DataFrame):
+        """
+        根据特征或目标是否是连续型还是类别型分为如下几种情况：
+        1、特征与特征之间的相关性：
+            （1）数值型与类别型：
+            （2）数值型与数值型：
+        2、特征与目标之间的相关性：
+            （1）目标是数值型，
+                    a、特征是数值型：
+
+                    b、特征是类别型：
+                        单因素方差分析、多因素方差分析、双样本t检验.
+            （2）目标是类别型，
+                    a、特征是数值型：
+                    b、特征是类别型：
+        :param data:
+        :return:
+        """
         # 进行相关性分析前，需要将文本字段删除.
         if self._value_field_list:  # 数值型变量相关性分析.
             corr_matrix = data[self._value_field_list].corr()
