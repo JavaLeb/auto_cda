@@ -13,10 +13,10 @@ from scipy import stats
 # 字段唯一值占比.
 FIELD_UNIQUE_RATIO = 'field_unique_ratio'
 FIELD_UNIQUE_NUM = 'field_unique_num'
-EXPLORE_HIST = 'explore_hist'
-EXPLORE_BOX = 'explore_box'
-EXPLORE_QQ = 'explore_qq'
-EXPLORE_RELATION = 'explore_relation'
+SHOW_HIST_QQ = 'show_hist_qq'
+SHOW_BOX = 'show_box'
+SHOW_QQ = 'show_qq'
+SHOW_RELATION = 'show_relation'
 DUPLICATE_FIELDS = 'duplicate_fields'
 
 
@@ -53,41 +53,32 @@ class DataExplorer:
                 raise Exception(f'conf {DUPLICATE_FIELDS} error, the conf not in data coloumns.')
 
         # 获取配置：直方图配置.
-        self._explore_hist = self._data_explorer_conf.get(EXPLORE_HIST)
-        self._hist_plot_fields = self._data_explorer_conf.get('hist_plot_fields')
-        if not isinstance(self._hist_plot_fields, list):
-            raise Exception(f'conf hist_plot_fields error, need a list. {self._hist_plot_fields}')
-        if len(self._hist_plot_fields) > 0:
-            self._hist_plot_fields = list(set(self._hist_plot_fields) & set(data.columns))
-            if len(self._hist_plot_fields) == 0:
-                raise Exception(f'conf hist_plot_fields error, need column in data columns. {self._hist_plot_fields}')
+        self._show_hist_qq = self._data_explorer_conf.get(SHOW_HIST_QQ)
+        self._hist_qq_plot_fields = self._data_explorer_conf.get('hist_qq_plot_fields')
+        if not isinstance(self._hist_qq_plot_fields, list):
+            raise Exception(f'conf hist_qq_plot_fields error, need a list. {self._hist_qq_plot_fields}')
+        if len(self._hist_qq_plot_fields) > 0:
+            self._hist_qq_plot_fields = list(set(self._hist_qq_plot_fields) & set(data.columns))
+            if len(self._hist_qq_plot_fields) == 0:
+                raise Exception(
+                    f'conf hist_qq_plot_fields error, need column in data columns. {self._hist_qq_plot_fields}')
 
         # 获取配置：箱型图配置.
-        self._explore_box = self._data_explorer_conf.get(EXPLORE_BOX)
+        self._show_box = self._data_explorer_conf.get(SHOW_BOX)
         self._box_plot_fields = self._data_explorer_conf.get('box_plot_fields')
         if not isinstance(self._box_plot_fields, list):
             raise Exception(f'conf box_plot_fields error, need a list. {self._box_plot_fields}')
         if len(self._box_plot_fields) > 0:
-            self._hist_plot_fields = list(set(self._box_plot_fields) & set(data.columns))
-            if len(self._hist_plot_fields) == 0:
+            self._box_plot_fields = list(set(self._box_plot_fields) & set(data.columns))
+            if len(self._box_plot_fields) == 0:
                 raise Exception(f'conf box_plot_fields error, need column in data columns. {self._box_plot_fields}')
 
-        # 获取配置：QQ图配置.
-        self._explore_qq = self._data_explorer_conf.get(EXPLORE_QQ)
-        self._qq_plot_fields = self._data_explorer_conf.get('qq_plot_fields')
-        if not isinstance(self._qq_plot_fields, list):
-            raise Exception(f'conf qq_plot_fields error, need a list. {self._qq_plot_fields}')
-        if len(self._qq_plot_fields) > 0:
-            self._qq_plot_fields = list(set(self._qq_plot_fields) & set(data.columns))
-            if len(self._qq_plot_fields) == 0:
-                raise Exception(f'conf qq_plot_fields error, need column in data columns. {self._qq_plot_fields}')
-
         # 获取配置：关系探索配置.
-        self.explore_relation = self._data_explorer_conf.get(EXPLORE_RELATION)
+        self._show_relation = self._data_explorer_conf.get(SHOW_RELATION)
         self._relation_threshold = self._data_explorer_conf.get('relation_threshold')
-        self._target_field = self._data_explorer_conf.get('target_field')
+        self._target_field = self._conf.get('global').get('target_field')
         if self._target_field is None:
-            self._target_field = self._data.columns[-1]
+            raise Exception('目标字段未配置，请检查配置global->target_field')
         if self._relation_threshold is None:
             self._relation_threshold = 0.5
         else:
@@ -151,29 +142,21 @@ class DataExplorer:
         # 探索重复值.
         self.explore_duplicate_info()
         # 探索关系.
-        self._explore_relation_info(self._data)
+        self._explore_field_relation_info(self._data)
 
-        if self.explore_relation:
-            if len(self._value_field_list) > 0:
-                self._target_relation_plot(self._data[self._value_field_list])
         # 直方图.
-        if self._explore_hist:
-            if self._hist_plot_fields:
-                self._hist_plot(self._data[self._hist_plot_fields])
+        if self._show_hist_qq:
+            if self._hist_qq_plot_fields:
+                self._hist_qq_plot(self._data[self._hist_qq_plot_fields])
             else:
-                self._hist_plot(self._data)
+                self._hist_qq_plot(self._data[self._value_field_list])
+
         # 箱型图.
-        if self._explore_box:
+        if self._show_box:
             if self._box_plot_fields:
                 self._box_plot(self._data[self._box_plot_fields])
             else:
                 self._box_plot(self._data)
-        # qq图.
-        if self._explore_qq:
-            if self._qq_plot_fields:
-                self._qq_plot(self._data[self._qq_plot_fields])
-            else:
-                self._qq_plot(self._data)
 
         logger.info('数据探索完成！！！！！！！！！！！！！！！！！！')
 
@@ -237,6 +220,14 @@ class DataExplorer:
         return self._data_info, self._field_info
 
     def explore_class_field(self, class_fields: list = None) -> (DataFrame, DataFrame):
+        """
+        探索类别型字段. 类别型字段分为数值型-类别字段和文本型-类别字段. 属于单变量分析.
+        字段类别的个数，类别的频次、类别的频率.
+        注：数值型类别字段 和 数值型字段 在类别划分上存在模糊， 一个字段到底是数值型类别字段，还是数值型字段，
+            可根据用户实际情况进行划分，一旦划分后，该字段仅作为其中一个类别进行处理.
+        :param class_fields: 类别型字段.
+        :return: 探索得到的数据信息、类别字段信息.
+        """
         if class_fields:
             class_fields = list(set(self._data.columns) & set(class_fields))
             if len(class_fields) == 0:
@@ -262,6 +253,13 @@ class DataExplorer:
         return self._data_info, self._class_field_info
 
     def explore_value_field(self, value_fields: list = None) -> (DataFrame, DataFrame):
+        """
+        探索数值型字段. 属于单变量分析.
+        中心趋势分析：最小值、最大值、平均值、中位数.
+        离散趋势分析：标准差.
+        :param value_fields: 探索的数值型字段.
+        :return: 探索得到的数据信息、数值型字段信息.
+        """
         if value_fields:
             value_fields = list(set(self._data.columns) & set(value_fields))
             if len(value_fields) == 0:
@@ -304,6 +302,10 @@ class DataExplorer:
         return self._data_info, self._value_field_info
 
     def explore_object_field(self):
+        """
+        探索对象型字段.
+        :return:
+        """
         # 字段类型个数统计.
         self._data_info['object-field-count'] = [len(self._object_field_list)]
 
@@ -377,7 +379,11 @@ class DataExplorer:
                 if dtype.startswith('float') or dtype.startswith('int'):
                     self._class_value_field_list.append(col)
                 else:
-                    self._class_text_field_list.append(col)
+                    try:
+                        pd.to_numeric(self._data[col], errors='raise')
+                        self._class_value_field_list.append(col)
+                    except ValueError:
+                        self._class_text_field_list.append(col)
             elif dtype.startswith('float') or dtype.startswith('int'):
                 self._field_type_list.append('VALUE')
                 self._value_field_list.append(col)
@@ -397,26 +403,34 @@ class DataExplorer:
         self._conf['global']['class_value_fields'] = self._class_value_field_list
         self._conf['global']['object_fields'] = self._object_field_list
 
-    def _explore_relation_info(self, data: DataFrame):
+    def _explore_field_relation_info(self, data: DataFrame):
         """
-        根据特征或目标是否是连续型还是类别型分为如下几种情况：
-        1、特征与特征之间的相关性：
+        探索字段之间的关系. 属于双变量分析或多变量分析.
+
+        根据字段是特征还是标签，字段之间的关系可分为：
+        （1）特征与特征之间的关系；
+        （2）特征与标签之间的关系.
+
+        根据字段的类型不同：
+        1、特征与特征之间的关系：
             （1）数值型与类别型：
             （2）数值型与数值型：
-        2、特征与目标之间的相关性：
-            （1）目标是数值型，
+                分析方法：相关系数、绘制散点图.
+            （3）类别型与类型别：
+        2、特征与标签之间的相关性：
+            （1）标签是数值型，
                     a、特征是数值型：
 
                     b、特征是类别型：
                         单因素方差分析、多因素方差分析、双样本t检验.
-            （2）目标是类别型，
+            （2）标签是类别型，
                     a、特征是数值型：
                     b、特征是类别型：
         :param data:
         :return:
         """
-        # 进行相关性分析前，需要将文本字段删除.
-        if self._value_field_list:  # 数值型变量相关性分析.
+        # 探索数值型之间的关系.
+        if len(self._value_field_list) > 0:  # 数值型变量相关性分析.
             corr_matrix = data[self._value_field_list].corr()
             # 提取大于阈值的元素
             upper_tri_mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
@@ -428,19 +442,32 @@ class DataExplorer:
             # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
             print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
 
-            # # 热力图.
-            # sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
-            # plt.title('matrix relation')
+            if self._show_relation:
+                # 两个变量之间的散点图.
+                self._value_field_relation_plot(corr_matrix)
+
             # # 两个变量之间的散点图.
             # pd.plotting.scatter_matrix(data, figsize=(20, 10))
             # plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 调整每个图之间的距离.
             # plt.show()
 
-        if self._class_field_list:  # 类别型变量与目标变量相关性分析.
+        # 探索类别型字段之间的关系.
+        if len(self._class_field_list) > 0:  # 类别型变量与目标变量相关性分析.
             pass
+            self._class_field_relation_plot()
 
-    def _hist_plot(self, data: DataFrame = None) -> None:
-        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        # 探索类别型与数值型字段之间的关系.
+        if len(self._class_field_list) > 0 and len(self._value_field_list) > 0:
+            pass
+            self._class_value_relation_plot()
+
+    def _hist_qq_plot(self, data: DataFrame = None) -> None:
+        """
+        绘制直方图.
+        :param data: 数据.
+        :return:
+        """
+        row_num, col_num = 3, 4  # 一个图的子图数量：行数和列数.
         num = 0  # 列的索引号.
         for col in data.columns:
             k = num % (row_num * col_num) + 1
@@ -448,9 +475,43 @@ class DataExplorer:
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
                 plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
-            # density,probability,count
+            # 绘制直方图.
+            name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
             sns.histplot(data[col], kde=True, stat='probability')  # 绘制直方图
-            plt.xlabel(col + '(Ftype:' + self._field_info.loc[col, 'Ftype'] + ")")
+            plt.xlabel(name, fontsize=8)
+            plt.ylabel('Probability', fontsize=8)
+
+            # 绘制QQ图.
+            plt.subplot(row_num, col_num, k + 1)  # 绘制第k个图.
+            stats.probplot(data[col], plot=plt, )  # 绘制直方图
+            plt.xlabel(name, fontsize=8)
+            plt.ylabel('Ordered Values', fontsize=8)
+            plt.title('Probability Plot', fontsize=8)
+
+            num += 2
+
+        plt.show()
+
+    def _hist_plot(self, data: DataFrame = None) -> None:
+        """
+        绘制直方图.
+        :param data: 数据.
+        :return:
+        """
+        row_num, col_num = 3, 4  # 一个图的子图数量：行数和列数.
+        num = 0  # 列的索引号.
+        for col in data.columns:
+            k = num % (row_num * col_num) + 1
+            if k == 1:  # 每当k为1时，重新创建一个图.
+                plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+            plt.subplot(row_num, col_num, k)  # 绘制第k个图.
+            # 绘制直方图.
+            name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
+            sns.histplot(data[col], kde=True, stat='probability')  # 绘制直方图
+            plt.xlabel(name, fontsize=8)
+            plt.ylabel('Probability', fontsize=8)
+
             num += 1
 
         plt.show()
@@ -465,13 +526,18 @@ class DataExplorer:
                 plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             plt.xlabel(col + '(Ftype:' + self._field_info.loc[col, 'Ftype'] + ")")
-            # density,probability,count
             sns.boxplot(data[col], orient='v', width=0.5)  # 绘制直方图
             num += 1
-
         plt.show()
 
     def _qq_plot(self, data: DataFrame = None) -> None:
+        """
+        绘制数据的QQ图.
+        QQ图主要用于查看数据是否是正态分布.
+        :param data: 待绘制QQ图的数据.
+        :return:
+        """
+
         row_num, col_num = 3, 4  # 一个图的行数和列数.
         num = 0  # 列的索引号.
         for col in data.columns:
@@ -480,33 +546,62 @@ class DataExplorer:
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
                 plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
+            stats.probplot(data[col], plot=plt)  # 绘制直方图
             name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
             plt.xlabel(name)
-            # density,probability,count
-            stats.probplot(data[col], plot=plt)  # 绘制直方图
             plt.title(name, fontsize=8)
             num += 1
 
         plt.show()
 
-    def _target_relation_plot(self, data: DataFrame = None) -> None:
+    def _value_field_relation_plot(self, corr_matrix) -> None:
+        logger.info('开始绘制字段关系图像..............')
+        # 关系矩阵热力图.
+        sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
+        plt.title('matrix relation')
+
+        tuple_list = []
+        for i in range(len(self._value_field_list)):
+            if self._value_field_list[i] == self._target_field:
+                for j in range(len(self._value_field_list)):
+                    if j == i:
+                        continue
+                    tuple_list.append((i, j))
+            else:
+                for j in range(i + 1, len(self._value_field_list)):
+                    tuple_list.append((i, j))
         row_num, col_num = 3, 4  # 一个图的行数和列数.
         num = 0  # 列的索引号.
-        for col in data.columns:
+        for (i, j) in tuple_list:
+            row_name = self._value_field_list[i]
+            col_name = self._value_field_list[j]
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
                 plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
-            name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
-            sns.regplot(x=col, y=self._target_field, data=self._data,
+            name = f'{col_name}(Ftype:{self._field_info.loc[col_name, "Ftype"]})'
+            sns.regplot(x=col_name, y=row_name, data=self._data,
                         scatter_kws={'marker': '.', 's': 3, 'alpha': 0.3},
                         line_kws={'color': 'k'})  # 绘制直方图
-            plt.xlabel(name)
-            plt.ylabel('target')
+            plt.xlabel(name, fontsize=8)
+            plt.ylabel(row_name, fontsize=8)
+            if row_name == self._target_field:
+                title = 'target-relation'
+            else:
+                title = 'feature-relation'
+            plt.title(f'{title}(rv={"{:.2f}".format(corr_matrix.loc[row_name, col_name])})', fontsize=8)
+
             num += 1
 
         plt.show()
+        logger.info('绘制字段关系图像完成！！！！！！！！')
+
+    def _class_field_relation_plot(self):
+        pass
+
+    def _class_value_relation_plot(self):
+        pass
 
     def print_summary(self) -> None:
 

@@ -14,9 +14,19 @@ data_source:
   #  path: ../data/工业蒸汽量预测/data/zhengqi_train.txt  # 文件路径.
   header: 0 # 标题行.
 
-
+# ===================================================================================================================
+# 全局变量配置.
+# target_field:
+#   目标字段，或称为标签、输出字段等.
+# class_fields:
+#   类别字段配置. 可分为：数值型类别字段（例如：1、0）、文本型类别字段（例如：男性、女性）.
+# class_text_fields:
+#   文本型类别字段. 无需配置.
+# class_value_fields:
+#   数值型类别字段. 无需配置 class_value_fields = class_fields - class_text_fields.
+# ===================================================================================================================
 global:
-  target_field:
+  target_field: population
   class_fields: [ ]
   class_text_fields: [ ]
 
@@ -42,18 +52,14 @@ data_explorer:
   field_unique_ratio: 0.001
   field_unique_num: 50
 
-  explore_hist: false
-  hist_plot_fields: [ ]
+  show_hist_qq: false
+  hist_qq_plot_fields: [ ]
 
-  explore_box: false
+  show_box: false
   box_plot_fields: [ ]
 
-  explore_qq: false
-  qq_plot_fields: [ ]
-
-  explore_relation: false
+  show_relation: true
   relation_threshold: 0.5
-  target_relation_fields: [ ]
 
   duplicate_fields: [ ]
 
@@ -104,7 +110,7 @@ data_processor:
   #   配置需要删除的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
   # ---------------------------------------------------------------------------------------------------------------
   field_selection:
-    fields: [ 'V5','V9','V11','V17','V22','V28' ]
+    fields: [ V5, V9, V11, V17, V22, V28 ]
     variance_threshold_selection:
       - fields: [ longitude ]
         threshold: 1000000
