@@ -79,6 +79,9 @@ class DataExplorer:
         self._target_field = self._conf.get('global').get('target_field')
         if self._target_field is None:
             raise Exception('目标字段未配置，请检查配置global->target_field')
+        elif self._target_field not in data.columns:
+            raise Exception('目标字段配置错误，非数据字段，请检查配置global->target_field')
+
         if self._relation_threshold is None:
             self._relation_threshold = 0.5
         else:
@@ -157,6 +160,12 @@ class DataExplorer:
                 self._box_plot(self._data[self._box_plot_fields])
             else:
                 self._box_plot(self._data)
+
+        # 字段关系图.
+        if self._show_relation:
+            self._value_field_relation_plot(self._data[self._value_field_list])
+            self._class_field_relation_plot(data=self._data[self._class_field_list])
+            self._class_value_relation_plot(data=self._data)
 
         logger.info('数据探索完成！！！！！！！！！！！！！！！！！！')
 
@@ -397,6 +406,8 @@ class DataExplorer:
                     self._object_field_list.append(col)
             else:
                 raise Exception(f'无法确认数据类型[{dtype}]的字段[{col}]的类别')
+
+        # 不安全，后期考虑如何处理.
         self._conf['global'] = {}
         self._conf['global']['class_fields'] = self._class_field_list
         self._conf['global']['class_text_fields'] = self._class_text_field_list
@@ -442,24 +453,59 @@ class DataExplorer:
             # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
             print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
 
-            if self._show_relation:
-                # 两个变量之间的散点图.
-                self._value_field_relation_plot(corr_matrix)
-
             # # 两个变量之间的散点图.
             # pd.plotting.scatter_matrix(data, figsize=(20, 10))
             # plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 调整每个图之间的距离.
             # plt.show()
 
         # 探索类别型字段之间的关系.
-        if len(self._class_field_list) > 0:  # 类别型变量与目标变量相关性分析.
-            pass
-            self._class_field_relation_plot()
+        self.explore_class_field_relation(data=data)
 
         # 探索类别型与数值型字段之间的关系.
         if len(self._class_field_list) > 0 and len(self._value_field_list) > 0:
             pass
-            self._class_value_relation_plot()
+
+    def explore_class_field_relation(self, data: DataFrame):
+        """
+        探索两个类别型字段之间的关系.
+        探索方法：列联表分析和卡方检验.
+        如果其中一个字段的分布随着另一个字段的水平不同而发生变化，那么这两个类别型字段就有关系，反之没有.
+
+        列联表分析：列联表的行通常是因变量，列通常是自变量.
+        卡方检验：卡方检验是检验两个类别型变量是否独立，如果计算出的 p<0.05，认为两者有关，否则独立.
+        :param data:
+        :return:
+        """
+
+        if len(self._class_field_list) > 0:  # 类别型变量与目标变量相关性分析.
+            chi_square_df = pd.DataFrame()
+            p_df = pd.DataFrame()
+            relation_df = pd.DataFrame()
+            for row_name in self._class_field_list:
+                chi_square_series = pd.Series()
+                p_series = pd.Series()
+                relation_series = pd.Series()
+                for col_name in self._class_field_list:
+                    target = data[row_name]
+                    col_data = data[col_name]
+                    cross_table = pd.crosstab(index=target, columns=col_data, margins=True)
+                    cross_table_ratio = cross_table.div(cross_table['All'], axis=0)
+                    # 卡方检验.
+                    chi_square, p_value, dof, expected_freq = stats.chi2_contingency(cross_table)
+                    print('-' * 100)
+                    relation = ("Yes" if p_value < 0.05 else "No")
+                    relation_series[col_name] = relation
+                    print(f'类别字段row={row_name}, col={col_name}之间{relation}: chi_square={chi_square}, p={p_value}')
+                    print(f'频数列联表({row_name}, {col_name}): \n', cross_table)
+                    print(f'频率列联表({row_name}, {col_name}): \n', cross_table_ratio)
+                    chi_square_series[col_name] = chi_square
+                    p_series[col_name] = p_value
+                chi_square_df[row_name] = chi_square_series
+                p_df[row_name] = p_series
+                relation_df[row_name] = relation_series
+            print_with_sep_line('类别型字段关系卡方统计量：\n', chi_square_df.to_markdown())
+            print_with_sep_line('类别型字段p值：\n', p_df.to_markdown())
+            print_with_sep_line('类别型字段之间是否有关系（p<0.05）：\n', relation_df.to_markdown())
 
     def _hist_qq_plot(self, data: DataFrame = None) -> None:
         """
@@ -554,27 +600,28 @@ class DataExplorer:
 
         plt.show()
 
-    def _value_field_relation_plot(self, corr_matrix) -> None:
+    def _value_field_relation_plot(self, data: DataFrame) -> None:
         logger.info('开始绘制字段关系图像..............')
+        corr_matrix = data[self._value_field_list].corr()
         # 关系矩阵热力图.
         sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
         plt.title('matrix relation')
 
         tuple_list = []
         for i in range(len(self._value_field_list)):
-            if self._value_field_list[i] == self._target_field:
+            row = self._value_field_list[i]
+            if row == self._target_field:
                 for j in range(len(self._value_field_list)):
                     if j == i:
                         continue
-                    tuple_list.append((i, j))
+                    tuple_list.append((row, self._value_field_list[j]))
             else:
                 for j in range(i + 1, len(self._value_field_list)):
-                    tuple_list.append((i, j))
+                    tuple_list.append((row, self._value_field_list[j]))
+
         row_num, col_num = 3, 4  # 一个图的行数和列数.
         num = 0  # 列的索引号.
-        for (i, j) in tuple_list:
-            row_name = self._value_field_list[i]
-            col_name = self._value_field_list[j]
+        for (row_name, col_name) in tuple_list:
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
@@ -591,17 +638,55 @@ class DataExplorer:
             else:
                 title = 'feature-relation'
             plt.title(f'{title}(rv={"{:.2f}".format(corr_matrix.loc[row_name, col_name])})', fontsize=8)
-
             num += 1
 
         plt.show()
         logger.info('绘制字段关系图像完成！！！！！！！！')
 
-    def _class_field_relation_plot(self):
-        pass
+    def _class_field_relation_plot(self, data: DataFrame):
 
-    def _class_value_relation_plot(self):
-        pass
+        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        num = 0  # 列的索引号.
+
+        for row_name in self._class_field_list:
+            for col_name in self._class_field_list:
+                target = data[row_name]
+                col_data = data[col_name]
+                cross_table = pd.crosstab(index=target, columns=col_data, margins=True)
+                cross_table_ratio = cross_table.div(cross_table['All'], axis=0)
+                df = cross_table_ratio[cross_table_ratio.columns[:-1]].iloc[:-1]
+                chi_square, p_value, _, _ = stats.chi2_contingency(cross_table)
+
+                k = num % (row_num * col_num) + 1
+                if k == 1:  # 每当k为1时，重新创建一个图.
+                    plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                    plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                axes = plt.subplot(row_num, col_num, k)  # 绘制第k个图.
+                df.plot(kind='bar', stacked=True, ax=axes)
+                title = f'p={"{:.2f}".format(p_value)},chi_square={"{:.2f}".format(chi_square)}'
+                plt.ylabel(col_name)
+                plt.title(title, fontsize=8)
+                num += 1
+
+        plt.show()
+
+    def _class_value_relation_plot(self, data: DataFrame):
+        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        num = 0  # 列的索引号.
+
+        for x in self._class_field_list:
+            for y in self._value_field_list:
+                k = num % (row_num * col_num) + 1
+                if k == 1:  # 每当k为1时，重新创建一个图.
+                    plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                    plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                axes = plt.subplot(row_num, col_num, k)  # 绘制第k个图.
+                sns.set(style="darkgrid")
+                # 利用violinplot函数绘制小提琴图
+                sns.violinplot(x=data[x], y=data[y])
+                num += 1
+
+        plt.show()
 
     def print_summary(self) -> None:
 

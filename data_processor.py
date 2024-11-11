@@ -77,13 +77,15 @@ class DataProcessor:
         # 先找出方差为0的字段.
         deleted_features_set = set()
         vt = VarianceThreshold(threshold=0)
+        if len(object_fields) > 0:
+            data_copy = data_copy.drop(columns=object_fields)
         try:
             vt.fit_transform(data_copy)
+            variances = vt.variances_
+            deleted_features = [feature for feature, variance in zip(data_copy.columns, variances) if variance <= 0]
+            deleted_features_set.update(set(deleted_features))
         except ValueError as e:
             print('所有特征将会被删除，这是不允许的！', e)
-        variances = vt.variances_
-        deleted_features = [feature for feature, variance in zip(data_copy.columns, variances) if variance <= 0]
-        deleted_features_set.update(set(deleted_features))
 
         # 再找出配置的字段.
         variance_threshold_selection = self._field_selection_conf.get('variance_threshold_selection')
@@ -247,16 +249,16 @@ class DataProcessor:
 
         # 这里根据需要自定义实现转换逻辑：Pipeline + ColumnTransformer.
         # 暂未做到配置化.
-        transformer = Pipeline(steps=[
-            ('pre', ColumnTransformer(transformers=[
-                ('standard_scaler', StandardScaler(), ['V0', 'V1']),
-                ('min_max_scaler', MinMaxScaler(), ['V2', 'V3'])
-            ], remainder='passthrough')),
-            ('pca', PCA(n_components=0.9))
-        ])
-        result = transformer.fit_transform(data)
+        # transformer = Pipeline(steps=[
+        #     ('pre', ColumnTransformer(transformers=[
+        #         ('standard_scaler', StandardScaler(), ['V0', 'V1']),
+        #         ('min_max_scaler', MinMaxScaler(), ['V2', 'V3'])
+        #     ], remainder='passthrough')),
+        #     ('pca', PCA(n_components=0.9))
+        # ])
+        # result = transformer.fit_transform(data)
 
-        return result
+        return data
 
     def transform_field_back(self, data: DataFrame = None) -> DataFrame:
 

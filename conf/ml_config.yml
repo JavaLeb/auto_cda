@@ -7,7 +7,8 @@ data_source:
   field_sep: ',' # 字段（属性、特征）之间的分隔符.
   #    train_path: data\sina\sina_train.csv
   #  train_path: data/zhengqi/zhengqi_train.txt
-  train_path: data\housing\housing.csv
+  train_path: data/pm25/pm25_train.csv
+#  train_path: data\housing\housing.csv
   test_path: data\housing\housing.csv
   #  train_path: data\sina\sina_train.csv
   #  test_path: data\sina\sina_test_X.csv
@@ -26,7 +27,7 @@ data_source:
 #   数值型类别字段. 无需配置 class_value_fields = class_fields - class_text_fields.
 # ===================================================================================================================
 global:
-  target_field: population
+  target_field: cbwd_cv
   class_fields: [ ]
   class_text_fields: [ ]
 
@@ -49,8 +50,8 @@ data_explorer:
 
   head_num: 10
 
-  field_unique_ratio: 0.001
-  field_unique_num: 50
+  field_unique_ratio: 0.0001
+  field_unique_num: 10
 
   show_hist_qq: false
   hist_qq_plot_fields: [ ]
