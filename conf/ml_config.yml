@@ -59,7 +59,7 @@ data_explorer:
   show_box: false
   box_plot_fields: [ ]
 
-  show_relation: true
+  show_relation: false
   relation_threshold: 0.5
 
   duplicate_fields: [ ]

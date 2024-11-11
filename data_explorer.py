@@ -8,6 +8,9 @@ from data_configuration import Configuration
 import numpy as np
 from pandas.io.formats.info import DataFrameInfo
 from scipy import stats
+import re
+from statsmodels.formula.api import ols
+from statsmodels.stats.anova import anova_lm
 
 # 配置.
 # 字段唯一值占比.
@@ -442,28 +445,73 @@ class DataExplorer:
         """
         # 探索数值型之间的关系.
         if len(self._value_field_list) > 0:  # 数值型变量相关性分析.
-            corr_matrix = data[self._value_field_list].corr()
-            # 提取大于阈值的元素
-            upper_tri_mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
-            result = corr_matrix.where(upper_tri_mask)
-            # 筛选出大于阈值的数据
-            cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
-            cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
-            print_with_sep_line(f'数据的相关性矩阵：\n{corr_matrix.to_markdown()}')
-            # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
-            print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
-
-            # # 两个变量之间的散点图.
-            # pd.plotting.scatter_matrix(data, figsize=(20, 10))
-            # plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 调整每个图之间的距离.
-            # plt.show()
+            self.explore_value_field_relation(data=data)
 
         # 探索类别型字段之间的关系.
-        self.explore_class_field_relation(data=data)
+        if len(self._class_field_list) > 0:
+            self.explore_class_field_relation(data=data)
 
         # 探索类别型与数值型字段之间的关系.
         if len(self._class_field_list) > 0 and len(self._value_field_list) > 0:
-            pass
+            self.explore_class_value_field_relation(data=data)
+
+    def explore_class_value_field_relation(self, data: DataFrame):
+        """
+        https://blog.csdn.net/L_15156024189/article/details/133691501
+        :param data:
+        :return:
+        """
+        data_copy = data.copy()
+        pattern = r'^[a-zA-Z0-9_]+$'
+        # 移除缺失值
+        data_copy = data_copy.dropna(how='any', axis=0)
+        replace = r'[^a-zA-Z0-9_]'
+        f_df = pd.DataFrame()
+        p_df = pd.DataFrame()
+        relation_df = pd.DataFrame()
+        for target in self._value_field_list:
+            f_series = pd.Series()
+            p_series = pd.Series()
+            relation_series = pd.Series()
+            for source in self._class_field_list:
+                new_target = target
+                new_source = source
+                if not re.match(pattern, target):
+                    new_target = re.sub(replace, '_', target)
+                    data_copy = data_copy.rename(columns={target: new_target})
+                if not re.match(pattern, target):
+                    new_source = re.sub(replace, '_', source)
+                    data_copy = data_copy.rename(columns={source: new_source})
+                formula = f'{new_target}~C({new_source})'
+                anova_results = anova_lm(ols(formula=formula, data=data_copy).fit())
+                f_series[source] = anova_results['F'].iloc[0]
+                p_series[source] = anova_results['PR(>F)'].iloc[0]
+                relation_series[source] = ('Yes' if anova_results['PR(>F)'].iloc[0] < 0.05 else 'No')
+                print('-' * 100)
+                print(f'anova分析结果（{target}=f({source})）：\n', anova_results)
+            f_df[target] = f_series
+            p_df[target] = p_series
+            relation_df[target] = relation_series
+        print_with_sep_line('数值型字段=f(类别型字段) anova F值：\n', f_df.to_markdown())
+        print_with_sep_line('数值型字段=f(类别型字段) anova p值：\n',p_df.to_markdown())
+        print_with_sep_line('数值型字段=f(类别型字段) anova 是否有关系：\n',relation_df.to_markdown())
+
+    def explore_value_field_relation(self, data: DataFrame):
+        corr_matrix = data[self._value_field_list].corr()
+        # 提取大于阈值的元素
+        upper_tri_mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+        result = corr_matrix.where(upper_tri_mask)
+        # 筛选出大于阈值的数据
+        cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
+        cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
+        print_with_sep_line(f'数据的相关性矩阵：\n{corr_matrix.to_markdown()}')
+        # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
+        print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
+
+        # # 两个变量之间的散点图.
+        # pd.plotting.scatter_matrix(data, figsize=(20, 10))
+        # plt.subplots_adjust(hspace=0.1, wspace=0.1)  # 调整每个图之间的距离.
+        # plt.show()
 
     def explore_class_field_relation(self, data: DataFrame):
         """
