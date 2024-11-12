@@ -11,6 +11,9 @@ from scipy import stats
 import re
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
+from sklearn.preprocessing import LabelEncoder
+from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
+import statsmodels.api as sm
 
 # 配置.
 # 字段唯一值占比.
@@ -82,8 +85,8 @@ class DataExplorer:
         self._target_field = self._conf.get('global').get('target_field')
         if self._target_field is None:
             raise Exception('目标字段未配置，请检查配置global->target_field')
-        elif self._target_field not in data.columns:
-            raise Exception('目标字段配置错误，非数据字段，请检查配置global->target_field')
+        # elif self._target_field not in data.columns:
+        #     raise Exception('目标字段配置错误，非数据字段，请检查配置global->target_field')
 
         if self._relation_threshold is None:
             self._relation_threshold = 0.5
@@ -122,6 +125,56 @@ class DataExplorer:
         # 探索内置信息.
         self._explore_built_info()
 
+    def data(self):
+        return self._data
+
+    def compare(self, other_data_explorer):
+        other_data = other_data_explorer.data()
+        # 数据信息对比.
+
+        # 数据列信息对比.
+
+        # 数据分布对比.
+        row_num, col_num = 3, 4  # 一个图的子图数量：行数和列数.
+        num = 0  # 列的索引号.
+        for col in self._value_field_list:
+            k = num % (row_num * col_num) + 1
+            if k == 1:  # 每当k为1时，重新创建一个图.
+                plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+            plt.subplot(row_num, col_num, k)  # 绘制第k个图.
+            if col not in other_data.columns:
+                ax = sns.kdeplot(self._data[col], color='Red', fill=True)
+                ax.set_xlabel(col)
+                ax.set_ylabel('Frequency')
+                ax.legend(['this_data'])
+            else:
+                ax = sns.kdeplot(self._data[col], color='Red', fill=True)
+                ax = sns.kdeplot(other_data[col], color='Blue', fill=True)
+                ax.set_xlabel(col)
+                ax.set_ylabel('Frequency')
+                ax.legend(['this_data', 'other_data'])
+
+            num += 1
+
+        plt.show()
+
+    @property
+    def class_field_list(self):
+        return self._class_field_list
+
+    @property
+    def class_text_field_list(self):
+        return self._class_text_field_list
+
+    @property
+    def class_value_field_list(self):
+        return self._class_value_field_list
+
+    @property
+    def object_field_list(self):
+        return self._object_field_list
+
     def _explore_built_info(self):
         # 总行数.
         self._data_info['total-lines'] = [len(self._built_info.data)]
@@ -145,6 +198,8 @@ class DataExplorer:
         self.explore_field_info()
         # 探索缺失值.
         self.explore_missing_info()
+        # 探索异常值.
+        self._explore_outlier()
         # 探索重复值.
         self.explore_duplicate_info()
         # 探索关系.
@@ -253,7 +308,7 @@ class DataExplorer:
             value_ratio = self._data[field].value_counts(normalize=True, dropna=False)
             count_ratio = pd.concat([value_count, value_ratio], axis=1)
             count_ratio = count_ratio.reset_index(drop=False)
-            count_ratio.columns = ['class_value', 'count-NA-included', 'proportion-NA-included']
+            count_ratio.columns = ['class', 'count-NA-included', 'proportion-NA-included']
             self._class_field_info.append(count_ratio)
         self._data_info['class-fields-count'] = [len(class_fields)]
 
@@ -279,15 +334,15 @@ class DataExplorer:
         else:
             value_fields = self._value_field_list
 
-        data = self._data[value_fields]
-        mean_values = data.mean()
-        median_values = data.median()
-        min_values = data.min()
-        max_values = data.max()
-        std_values = data.std()
+        value_data = self._data[value_fields]
+        mean_values = value_data.mean()
+        median_values = value_data.median()
+        min_values = value_data.min()
+        max_values = value_data.max()
+        std_values = value_data.std()
         # 计算(u-3σ)和(u+3σ)
-        lower_bound = mean_values - 3 * std_values
-        upper_bound = mean_values + 3 * std_values
+        sigma_lower = mean_values - 3 * std_values
+        sigma_upper = mean_values + 3 * std_values
         # 中心趋势分析.
         self._value_field_info['min'] = min_values
         self._value_field_info['max'] = max_values
@@ -295,23 +350,69 @@ class DataExplorer:
         self._value_field_info['mean'] = mean_values
         # 离散趋势分析.
         self._value_field_info['std'] = std_values
-        self._value_field_info['mean-3sigma'] = lower_bound
-        self._value_field_info['mean+3sigma'] = upper_bound
-        outliers_count = data.apply(
-            lambda col: ((col < lower_bound[col.name]) | (col > upper_bound[col.name]))
-        )
-        self._value_field_info['outlier-count'] = outliers_count.sum()
+        self._value_field_info['mean-3sigma'] = sigma_lower
+        self._value_field_info['mean+3sigma'] = sigma_upper
 
-        # 计算每个字段第一个缺失值的索引.
+        sigma_outliers_count, sigma_outlier_first_index = self.compute_sigma_outliers(value_data)
+        self._value_field_info['3sigma-outlier-count'] = sigma_outliers_count.sum()
+        self._value_field_info['3sigma-outlier-first-index'] = sigma_outlier_first_index
+
+        # 计算四分位数和IQR
+        iqr_outliers_count, iqr_outlier_first_index = self.compute_iqr_outliers(value_data)
+        self._value_field_info['IQR-outlier-count'] = iqr_outliers_count.sum()
+        self._value_field_info['IQR-outlier-first-index'] = iqr_outlier_first_index
+
+        outliers_count = sigma_outliers_count & iqr_outliers_count
+        self._value_field_info['3sigma-IQR-outlier-count'] = outliers_count.sum()
         outlier_first_index = outliers_count.idxmax(axis=0)  # 计算每列中第一个缺失值的索引.
         outlier_first_index = outlier_first_index.astype(str)
         outlier_first_index[outliers_count.sum(axis=0) <= 0] = ''  # 将不含缺失值的列的索引初始化为空.
-        self._value_field_info['outlier-first-index'] = outlier_first_index
+        self._value_field_info['3sigma-IQR-outlier-first-index'] = outlier_first_index
+
         self._data_info['value-fields-count'] = [len(value_fields)]
-        print_with_sep_line(f'数值型字段摘要信息（总个数：{len(value_fields)}）：')
-        print(self._value_field_info.to_markdown())
 
         return self._data_info, self._value_field_info
+
+    def compute_sigma_outliers(self, value_data: DataFrame, n=3):
+        mean_values = value_data.mean()
+        std_values = value_data.std()
+        # 计算(u-3σ)和(u+3σ)
+        sigma_lower = mean_values - 3 * std_values
+        sigma_upper = mean_values + 3 * std_values
+        self._value_field_info['mean-3sigma'] = sigma_lower
+        self._value_field_info['mean+3sigma'] = sigma_upper
+        sigma_outliers_count = value_data.apply(
+            lambda col: ((col < sigma_lower[col.name]) | (col > sigma_upper[col.name]))
+        )
+
+        # 计算每个字段第一个缺失值的索引.
+        sigma_outlier_first_index = sigma_outliers_count.idxmax(axis=0)  # 计算每列中第一个缺失值的索引.
+        sigma_outlier_first_index = sigma_outlier_first_index.astype(str)
+        sigma_outlier_first_index[sigma_outliers_count.sum(axis=0) <= 0] = ''  # 将不含缺失值的列的索引初始化为空.
+
+        return sigma_outliers_count, sigma_outlier_first_index
+
+    def compute_iqr_outliers(self, value_data: DataFrame):
+        """
+        检查iqr异常值：异常值个数、异常值索引.
+        :param value_data:
+        :return:
+        """
+        # 计算四分位数和IQR
+        q1 = value_data.quantile(0.25, numeric_only=False)
+        q3 = value_data.quantile(0.75, numeric_only=False)
+        iqr = q3 - q1
+        # 定义异常值范围
+        iqr_lower = q1 - 1.5 * iqr
+        iqr_upper = q3 + 1.5 * iqr
+        iqr_outliers_count = value_data.apply(
+            lambda col: ((col < iqr_lower[col.name]) | (col > iqr_upper[col.name]))
+        )
+        iqr_outlier_first_index = iqr_outliers_count.idxmax(axis=0)  # 计算每列中第一个缺失值的索引.
+        iqr_outlier_first_index = iqr_outlier_first_index.astype(str)
+        iqr_outlier_first_index[iqr_outliers_count.sum(axis=0) <= 0] = ''  # 将不含缺失值的列的索引初始化为空.
+
+        return iqr_outliers_count, iqr_outlier_first_index
 
     def explore_object_field(self):
         """
@@ -319,7 +420,7 @@ class DataExplorer:
         :return:
         """
         # 字段类型个数统计.
-        self._data_info['object-field-count'] = [len(self._object_field_list)]
+        self._data_info['object-fields-count'] = [len(self._object_field_list)]
 
     def explore_missing_info(self) -> (DataFrame, DataFrame):
         """
@@ -377,6 +478,44 @@ class DataExplorer:
 
         return self._data_info, self._duplicate_info.head(1)
 
+    def _explore_outlier(self):
+        """
+        异常值检测.
+        :param data: 待检测数据
+        :return:
+        """
+        data_copy = self._data
+        fields = list(set(self._class_value_field_list + self._value_field_list))
+        if len(self._class_text_field_list) > 0:
+            fields = list(set(fields + self._class_text_field_list))
+            label_encoder = LabelEncoder()
+            x = label_encoder.fit_transform(data_copy[self._class_text_field_list])
+            data_copy[self._class_text_field_list] = pd.DataFrame(data=x.ravel())
+        # 3sigma检测异常值. 只能用于数值型.
+        sigma_outliers_count, sigma_outlier_first_index = \
+            self.compute_sigma_outliers(data_copy[fields])
+        self._field_info['3sigma-outlier-count'] = sigma_outliers_count.sum()
+        self._field_info['3sigma-outlier-ratio'] = sigma_outliers_count.sum() / len(data_copy)
+        self._field_info['3sigma-outlier-first-index'] = sigma_outlier_first_index
+
+        # IQR检测异常值.
+        iqr_outliers_count, iqr_outlier_first_index = self.compute_iqr_outliers(data_copy[fields])
+        self._field_info['IQR-outlier-count'] = iqr_outliers_count.sum()
+        self._field_info['IQR-outlier-ratio'] = iqr_outliers_count.sum() / len(data_copy)
+        self._field_info['IQR-outlier-first-index'] = iqr_outlier_first_index
+
+        # 3sigma、IQR检测异常值.
+        outliers_count = sigma_outliers_count & iqr_outliers_count
+        self._field_info['3sigma-IQR-outlier-count'] = outliers_count.sum()
+        self._field_info['3sigma-IQR-outlier-ratio'] = outliers_count.sum() / len(data_copy)
+        outlier_first_index = outliers_count.idxmax(axis=0)  # 计算每列中第一个缺失值的索引.
+        outlier_first_index = outlier_first_index.astype(str)
+        outlier_first_index[outliers_count.sum(axis=0) <= 0] = ''  # 将不含缺失值的列的索引初始化为空.
+        self._field_info['3sigma-IQR-outlier-first-index'] = outlier_first_index
+
+        self._data_info['total-3sigma-outlier-field'] = (self._field_info['3sigma-outlier-count'] > 0).sum()
+        self._data_info['total-IQR-outlier-field'] = (self._field_info['IQR-outlier-count'] > 0).sum()
+
     def _explore_field_built_type(self):
         # 字段唯一值个数统计（含缺失值）.
         self._unique_count = self._data.nunique(dropna=False)
@@ -409,13 +548,6 @@ class DataExplorer:
                     self._object_field_list.append(col)
             else:
                 raise Exception(f'无法确认数据类型[{dtype}]的字段[{col}]的类别')
-
-        # 不安全，后期考虑如何处理.
-        self._conf['global'] = {}
-        self._conf['global']['class_fields'] = self._class_field_list
-        self._conf['global']['class_text_fields'] = self._class_text_field_list
-        self._conf['global']['class_value_fields'] = self._class_value_field_list
-        self._conf['global']['object_fields'] = self._object_field_list
 
     def _explore_field_relation_info(self, data: DataFrame):
         """
@@ -488,15 +620,16 @@ class DataExplorer:
                 p_series[source] = anova_results['PR(>F)'].iloc[0]
                 relation_series[source] = ('Yes' if anova_results['PR(>F)'].iloc[0] < 0.05 else 'No')
                 print('-' * 100)
-                print(f'anova分析结果（{target}=f({source})）：\n', anova_results)
+                print(f'数值型字段=f(类别型字段)相关性分析结果（{target}=f({source})）：\n', anova_results)
             f_df[target] = f_series
             p_df[target] = p_series
             relation_df[target] = relation_series
-        print_with_sep_line('数值型字段=f(类别型字段) anova F值：\n', f_df.to_markdown())
-        print_with_sep_line('数值型字段=f(类别型字段) anova p值：\n',p_df.to_markdown())
-        print_with_sep_line('数值型字段=f(类别型字段) anova 是否有关系：\n',relation_df.to_markdown())
+        print_with_sep_line('数值型字段=f(类别型字段) anova相关性分析 F值：\n', f_df.to_markdown())
+        print_with_sep_line('数值型字段=f(类别型字段) anova相关性分析 p值：\n', p_df.to_markdown())
+        print_with_sep_line('数值型字段=f(类别型字段) anova相关性：\n', relation_df.to_markdown())
 
     def explore_value_field_relation(self, data: DataFrame):
+        # 相关性分析.
         corr_matrix = data[self._value_field_list].corr()
         # 提取大于阈值的元素
         upper_tri_mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
@@ -504,9 +637,16 @@ class DataExplorer:
         # 筛选出大于阈值的数据
         cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
         cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
-        print_with_sep_line(f'数据的相关性矩阵：\n{corr_matrix.to_markdown()}')
+        print_with_sep_line(f'数值型字段相关性矩阵：\n{corr_matrix.to_markdown()}')
         # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
-        print_with_sep_line(f'|相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
+        print_with_sep_line(f'数值型字段|相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
+
+        # 多重共线性. 需要移除目标字段，添加常数字段.
+        fields = [field for field in self._value_field_list if field != self._target_field]
+        copy_data = data[fields].copy()
+        copy_data = sm.add_constant(copy_data)  # 会添加在最前面
+        vif_value = [vif(copy_data, i) for i in range(1, len(copy_data.columns))]
+        self._value_field_info['vif-value'] = pd.DataFrame(data=vif_value, index=fields)
 
         # # 两个变量之间的散点图.
         # pd.plotting.scatter_matrix(data, figsize=(20, 10))
@@ -543,17 +683,19 @@ class DataExplorer:
                     print('-' * 100)
                     relation = ("Yes" if p_value < 0.05 else "No")
                     relation_series[col_name] = relation
-                    print(f'类别字段row={row_name}, col={col_name}之间{relation}: chi_square={chi_square}, p={p_value}')
+                    print(
+                        f'类别字段({row_name}, {col_name})列联表分析: relation={relation}, chi_square={chi_square}, p={p_value}')
                     print(f'频数列联表({row_name}, {col_name}): \n', cross_table)
+                    print('-' * 50)
                     print(f'频率列联表({row_name}, {col_name}): \n', cross_table_ratio)
                     chi_square_series[col_name] = chi_square
                     p_series[col_name] = p_value
                 chi_square_df[row_name] = chi_square_series
                 p_df[row_name] = p_series
                 relation_df[row_name] = relation_series
-            print_with_sep_line('类别型字段关系卡方统计量：\n', chi_square_df.to_markdown())
-            print_with_sep_line('类别型字段p值：\n', p_df.to_markdown())
-            print_with_sep_line('类别型字段之间是否有关系（p<0.05）：\n', relation_df.to_markdown())
+            print_with_sep_line('类别型字段相关性卡方统计量：\n', chi_square_df.to_markdown())
+            print_with_sep_line('类别型字段相关性p值：\n', p_df.to_markdown())
+            print_with_sep_line('类别型字段相关性（p<0.05）：\n', relation_df.to_markdown())
 
     def _hist_qq_plot(self, data: DataFrame = None) -> None:
         """
@@ -580,7 +722,7 @@ class DataExplorer:
             stats.probplot(data[col], plot=plt, )  # 绘制直方图
             plt.xlabel(name, fontsize=8)
             plt.ylabel('Ordered Values', fontsize=8)
-            plt.title('Probability Plot', fontsize=8)
+            plt.title(f'Probability Plot(skew={"{:.4f}".format(stats.skew(data[col]))})', fontsize=8)
 
             num += 2
 
@@ -741,5 +883,8 @@ class DataExplorer:
         print_with_sep_line('数据整体摘要信息：')
         print(self._data_info.to_markdown())
 
-        print_with_sep_line('数据列的摘要信息：')
+        print_with_sep_line(f'数据列的摘要信息：（总列数：{len(self._data.columns)}）')
         print(self._field_info.to_markdown())
+
+        print_with_sep_line(f'数值型字段摘要信息（总个数：{len(self._value_field_list)}）：')
+        print(self._value_field_info.to_markdown())

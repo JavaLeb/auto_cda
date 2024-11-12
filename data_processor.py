@@ -1,15 +1,16 @@
 import pandas as pd
 from data_configuration import Configuration
-from tools import get_fields, instantiate_class
+from tools import get_fields, instantiate_class, print_with_sep_line
 from pandas import DataFrame
 from typing import List
+from scipy import stats
 from sklearn.pipeline import Pipeline
 from tools import logger
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.impute import SimpleImputer, KNNImputer
 from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import *
 import numpy as np
 from typing import Union
 from sklearn.pipeline import Pipeline
@@ -18,6 +19,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import VarianceThreshold
+from data_explorer import DataExplorer
 
 # 配置.
 ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
@@ -26,14 +28,21 @@ ONE_HOT_ENCODER_FIELDS = 'one_hot_encoder_fields'
 DROP_FIELDS = 'drop_fields'
 
 transformer_dic = {
-    'sklearn.preprocessing': ['OrdinalEncoder', 'OneHotEncoder', 'LabelEncoder', 'StandardScaler'],
-    'sklearn.feature_extraction.text': ['TfidfVectorizer']
+    'sklearn.preprocessing': ['OrdinalEncoder', 'OneHotEncoder', 'LabelEncoder', 'StandardScaler', 'MinMaxScaler'],
+    'sklearn.feature_extraction.text': ['TfidfVectorizer'],
+    'sklearn.decomposition': ['PCA']
 }
 
 
 class DataProcessor:
-    def __init__(self, conf: Configuration):
+    def __init__(self, conf: Configuration, data_explorer: DataExplorer):
         self._conf = conf.conf
+        # 不安全，后期考虑如何处理.
+
+        self._class_field_list = data_explorer.class_field_list
+        self._class_text_field_list = data_explorer.class_text_field_list
+        self._class_value_field_list = data_explorer.class_value_field_list
+        self._object_field_list = data_explorer.object_field_list
         # 获取配置.
         self._data_processor_conf = conf.data_processor_conf
         # 一级配置.
@@ -62,23 +71,21 @@ class DataProcessor:
         return data
 
     def variance_threshold(self, data: DataFrame):
+        logger.info("方差阈值字段选择开始...................")
         data_copy = data.copy()
-        print(f"方差阈值特征选择前，原始特征数量: {len(data_copy.columns)}")
+        print_with_sep_line(f"方差阈值特征选择前，原始特征数量: {len(data_copy.columns)}")
 
         # 文本类别字段需要编码，object字段不需要删除.
-        class_text_fields = self._conf['global']['class_text_fields']
-        object_fields = self._conf['global']['object_fields']
-
-        if len(class_text_fields) > 0:
+        if len(self._class_text_field_list) > 0:
             label_encoder = LabelEncoder()
-            for field in class_text_fields:
+            for field in self._class_text_field_list:
                 data_copy[field] = label_encoder.fit_transform(data_copy[field])
+        if len(self._object_field_list) > 0:
+            data_copy = data_copy.drop(columns=self._object_field_list)
 
         # 先找出方差为0的字段.
         deleted_features_set = set()
         vt = VarianceThreshold(threshold=0)
-        if len(object_fields) > 0:
-            data_copy = data_copy.drop(columns=object_fields)
         try:
             vt.fit_transform(data_copy)
             variances = vt.variances_
@@ -95,7 +102,7 @@ class DataProcessor:
             fields = variance_threshold.get('fields')
             if fields is None or len(fields) == 0:
                 continue
-            fields = list(set(data_copy.columns) & set(fields) - set(object_fields))  # 需要排序类别字段.
+            fields = list(set(data_copy.columns) & set(fields) - set(self._object_field_list))  # 需要排序类别字段.
             if fields is None or len(fields) == 0:
                 continue
             threshold = variance_threshold.get('threshold')
@@ -113,12 +120,15 @@ class DataProcessor:
         if deleted_features_set:
             data_copy = data_copy.drop(columns=list(deleted_features_set))
         print(f'方差阈值特征选择，删除的特征数：{len(deleted_features_set)}')
-        print(f"方差阈值特征选择后，特征数量: {len(data_copy.columns)}")
+        print(
+            f"方差阈值特征选择后，特征数量: {len(data_copy.columns) + len(self._class_text_field_list) + len(self._object_field_list)}")
+        logger.info("方差阈值字段选择完成！！！！！！！！！！")
 
         return data_copy
 
     def clean_field(self, data: DataFrame = None):
         data = self.clean_na_field(data)
+        data = self.clean_outlier_field(data)
 
         return data
 
@@ -171,6 +181,57 @@ class DataProcessor:
                 raise Exception(f'不支持的清洗方法{clean_method}')
 
         return data
+
+    def clean_outlier_field(self, data: DataFrame):
+        data_copy = data.copy()
+        outlier_cleaners = self._field_cleaner_conf.get('outlier_cleaners')
+        for outlier_cleaner in outlier_cleaners:
+            fields = outlier_cleaner.get('fields')
+            if not fields:
+                continue
+            fields = list(set(fields) & set(data.columns))
+            if len(fields) == 0:
+                continue
+
+            encoder = outlier_cleaner.get('encoder')
+            if encoder:
+                for field in fields:
+                    if field in self._class_text_field_list:
+                        encoder_cls = instantiate_class(encoder)
+                        encoded_data = encoder_cls.fit_transformer(data_copy[field])
+                        data_copy[field] = pd.DataFrame(encoded_data)
+            pass
+            detector = outlier_cleaner.get('detector')
+            clean_method = outlier_cleaner.get('clean_method')
+
+        return data
+
+    def _explore_outlier(self, data: DataFrame):
+        """
+        异常值检测.
+        :param data: 待检测数据
+        :return:
+        """
+        data_copy = self._data
+        fields = list(set(self._class_value_field_list + self._value_field_list))
+        if len(self._class_text_field_list) > 0:
+            fields = list(set(fields + self._class_text_field_list))
+            label_encoder = LabelEncoder()
+            x = label_encoder.fit_transform(data_copy[self._class_text_field_list])
+            data_copy[self._class_text_field_list] = pd.DataFrame(data=x.ravel())
+        # 3sigma检测异常值. 只能用于数值型.
+        sigma_outliers_count, sigma_outlier_first_index = \
+            self.compute_sigma_outliers(data_copy[fields])
+        self._field_info['3sigma-outlier-count'] = sigma_outliers_count.sum()
+        self._field_info['3sigma-outlier-first-index'] = sigma_outlier_first_index
+
+        # IQR检测异常值.
+        iqr_outliers_count, iqr_outlier_first_index = self.compute_iqr_outliers(data_copy[fields])
+        self._field_info['IQR-outlier-count'] = iqr_outliers_count.sum()
+        self._field_info['IQR-outlier-first-index'] = iqr_outlier_first_index
+
+        # self._data_info['total-3sigma-outlier-field'] =
+        # self._data_info['total-IQR-outlier-field']=
 
     def _rfr_fill(self, data, fields, fill_params):
         rf = instantiate_class('sklearn.ensemble.RandomForestRegressor', **fill_params)
@@ -244,8 +305,24 @@ class DataProcessor:
 
     def transform_field(self, data: DataFrame = None) -> DataFrame:
 
-        # if not self._field_transformer_conf:  # 如果未配置了转换器.
-        #     return data
+        if not self._field_transformer_conf:  # 如果未配置了转换器.
+            return data
+        steps = self._field_transformer_conf.get('steps')
+        step_instance_list = []
+        for step in steps:
+            step_name = step.get('step_name')
+            if 'column_transformer' in step.keys():
+                column_transformer = step.get('column_transformer')
+
+                column_transformer_instance = self.build_column_transformer(column_transformer, data)
+                step_instance_list.append((step_name, column_transformer_instance))
+            elif 'transformer' in step.keys():
+                transformer = step.get('transformer')
+                cls = self.build_transformer(transformer)
+                step_instance_list.append((step_name, cls))
+
+        pipeline = Pipeline(steps=step_instance_list)
+        transformed_data = pipeline.fit_transform(data)
 
         # 这里根据需要自定义实现转换逻辑：Pipeline + ColumnTransformer.
         # 暂未做到配置化.
@@ -258,10 +335,51 @@ class DataProcessor:
         # ])
         # result = transformer.fit_transform(data)
 
-        return data
+        return transformed_data
+
+    def build_column_transformer(self, column_transformer, data: DataFrame):
+        transformers = column_transformer.get('transformers')
+        column_transformer_params = column_transformer.get('params')
+        transformers_list = []
+        for transformer in transformers:
+            fields = transformer.get('fields')
+            if fields is None or len(fields) == 0:
+                continue
+            fields = list(set(fields) & set(data.columns))
+            if len(fields) == 0:
+                break
+            transformer_name = transformer.get('transformer_name')
+            transformer_instance = transformer.get('transformer')
+            cls = self.build_transformer(transformer_instance)
+            transformers_list.append((transformer_name, cls, fields))
+        if column_transformer_params is not None and len(column_transformer_params) > 0:
+            column_transformer_instance = ColumnTransformer(transformers=transformers_list,
+                                                            **column_transformer_params)
+        else:
+            column_transformer_instance = ColumnTransformer(transformers=transformers_list, remainder='passthrough')
+        return column_transformer_instance
+
+    def build_transformer(self, transformer_instance):
+        instance = transformer_instance.get('instance')
+        instance_params = transformer_instance.get('params')
+        module_path = instance
+        if '.' not in instance:
+            find = False
+            for path, value in transformer_dic.items():
+                if instance in value:
+                    module_path = path + '.' + instance
+                    find = True
+            if not find:
+                raise Exception(f'未找到{module_path}, 请配置transformer全路径')
+        if instance_params is not None and len(instance_params) > 0:
+            cls = instantiate_class(module_path, **instance_params)
+        else:
+            instance_params = {}
+            cls = instantiate_class(module_path, **instance_params)
+
+        return cls
 
     def transform_field_back(self, data: DataFrame = None) -> DataFrame:
-
         if not self._field_transformer_conf:  # 如果配置了转换器.
             return data
 
@@ -397,3 +515,22 @@ class DateTransformer(BaseEstimator, TransformerMixin):
             df[col] = (pd.to_datetime(X[col]) - pd.Timestamp('1970-01-01')).dt.days
 
         return pd.DataFrame(data=df)
+
+
+class BoxCoxTransformer(BaseEstimator, TransformerMixin):
+    """
+    日期转换器.
+    """
+
+    def __init__(self):
+        pass
+
+    def fit(self, X, y=None):
+        self.n_features_in_ = X.shape[1]
+        self.feature_names_in_ = X.columns
+        return self
+
+    def transform(self, X):
+        xt, _ = stats.boxcox(X)
+
+        return xt

@@ -11,8 +11,8 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import PCA
 
-conf = Configuration(conf_path=r'conf/ml_config.yml')
-root = conf.data_processor_conf.get('field_transformer')
+# conf = Configuration(conf_path=r'conf/ml_config.yml')
+# root = conf.data_processor_conf.get('field_transformer')
 
 
 class PipelineNode:
@@ -96,17 +96,28 @@ class PCATransformer(BaseEstimator, TransformerMixin):
 
 
 if __name__ == '__main__':
+
     conf = Configuration(conf_path=r'conf/ml_config.yml')
+
     # 数据读取.
     data_reader = DataReader(ds_type='file', conf=conf)
-    data = data_reader.read()
+    train_data = data_reader.read_train()
+    test_data = data_reader.read_test()
 
     # 数据探索.
-    data_explorer = DataExplorer(data, conf=conf)
-    data_explorer.explore()
+    # 训练数据探索.
+    train_data_explorer = DataExplorer(train_data, conf=conf)
+    train_data_explorer.explore()
 
-    data_processor = DataProcessor(conf=conf)
-    data = data_processor.process(data)
+    # 测试数据探索.
+    test_data_explore = DataExplorer(test_data, conf=conf)
+    test_data_explore.explore()
+
+    # 训练数据、测试数据比较.
+    # train_data_explorer.compare(test_data_explore)
+
+    data_processor = DataProcessor(data_explorer=train_data_explorer, conf=conf)
+    data = data_processor.process(train_data)
 
     #
     # # 数据切分.
