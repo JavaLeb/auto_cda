@@ -219,7 +219,7 @@ data_processor:
             - transformer_name: min_max_scaler
               transformer:
                 instance: MinMaxScaler
-#                params: { feature_range: [0,1] }
+              #                params: { feature_range: [0,1] }
               fields: [ '*' ]
           params:
       - step_name: box_cox
@@ -240,6 +240,13 @@ data_processor:
 #     配置数据模型，可配置多个数据模型.
 #   estimator:
 #        模型名称，支持SVC等各种回归、分类模型.
+#             线性回归: sklearn.linear_model.LinearRegression
+#           K-近邻回归: sklearn.neighbors.KNeighborsRegressor
+#                        参数：n_neighbors=3.
+#        支持向量机回归: sklearn.svm.SVR
+#           决策树回归: sklearn.tree.DecisionTreeRegressor
+#         随机森林回归: sklearn.ensemble.RandomForestRegressor
+#        LightGBM回归: lightgbm.LGBMRegressor
 #   param_grid:
 #        配置模型参数，每个参数可配置多个值.
 # fine_tune:
@@ -248,47 +255,56 @@ data_processor:
 #     评估方法配置.支持sklearn.metrics中评估指标.
 #     name:
 #       评估方法名称.支持如下：
-#         回归指标.
-#           mean_squared_error: 均方误差.
-#           root_mean_squared_error:
+#         回归指标:
+#            平均绝对值误差: sklearn.metrics.mean_absolute_error
+#                 均方误差: sklearn.metrics.mean_squared_error
+#               均方根误差: sklearn.metrics.root_mean_squared_error
+#                 R平方值: sklearn.metrics.r2_score
 #         分类指标：
-#           accuracy_score
-#           precision_score
-#           recall_score
-#           f1_score
-#           roc_auc_score
-#           classification_report
-#           confusion_matrix
+#                  准确率: sklearn.metrics.accuracy_score
+#                  精准度: sklearn.metrics.precision_score
+#                  召回率: sklearn.metrics.recall_score
+#                  f1得分: sklearn.metrics.f1_score
+#                 AUC得分: sklearn.metrics.roc_auc_score
+#                 分类报告: sklearn.metrics.classification_report
+#                 混淆矩阵: sklearn.metrics.confusion_matrix
 #     min_max:
 #       评估准则，根据评估指标的最大值还是最小值来判断最佳.
 #     params:
 #       评估方法的参数.
 # ===================================================================================================================
 data_modeler:
-  target_fields: [ channel_title ]
   target_encoder:
-    name: LabelEncoder
+    name:
+  #    name: LabelEncoder
   models:
-    - estimator: SVC
+    - estimator: sklearn.linear_model.LinearRegression
       param_grid: [ ]
-    - estimator: RandomForestClassifier
+    - estimator: sklearn.neighbors.KNeighborsRegressor
+    - estimator: sklearn.svm.SVR
+    - estimator: sklearn.tree.DecisionTreeRegressor
+    - estimator: sklearn.ensemble.RandomForestRegressor
+    - estimator: lightgbm.LGBMRegressor
+  #    - estimator: RandomForestClassifier
   fine_tune: RandomizedSearchCV
   assessments:
-    - name: accuracy_score
-      min_max: max
-      params:
-    - name: precision_score
-      min_max: max
-      params: { average: micro }
-    - name: f1_score
-      min_max: max
-      params: { average: micro }
-    #    - name: recall_score
-    #      min_max: max
-    #      params: { average: micro }
-  #      - name: classification_report
-  #        min_max: max
-  #        params:
+    - name: mean_squared_error
+      min_max: min
+  #    - name: accuracy_score
+  #      min_max: max
+  #      params:
+  #    - name: precision_score
+  #      min_max: max
+  #      params: { average: micro }
+  #    - name: f1_score
+  #      min_max: max
+  #      params: { average: micro }
+  #    - name: recall_score
+  #      min_max: max
+  #      params: { average: micro }
+  #    - name: classification_report
+  #      min_max: max
+  #      params:
   #    - name: roc_auc_score
   #      min_max: max
   #      params: { multi_class: ovo }

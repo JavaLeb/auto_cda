@@ -135,13 +135,13 @@ class DataExplorer:
         # 数据列信息对比.
 
         # 数据分布对比.
-        row_num, col_num = 3, 4  # 一个图的子图数量：行数和列数.
+        row_num, col_num = 4, 6  # 一个图的子图数量：行数和列数.
         num = 0  # 列的索引号.
         for col in self._value_field_list:
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             if col not in other_data.columns:
                 ax = sns.kdeplot(self._data[col], color='Red', fill=True)
@@ -703,13 +703,13 @@ class DataExplorer:
         :param data: 数据.
         :return:
         """
-        row_num, col_num = 3, 4  # 一个图的子图数量：行数和列数.
+        row_num, col_num = 4, 6  # 一个图的子图数量：行数和列数.
         num = 0  # 列的索引号.
         for col in data.columns:
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             # 绘制直方图.
             name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
@@ -734,13 +734,13 @@ class DataExplorer:
         :param data: 数据.
         :return:
         """
-        row_num, col_num = 3, 4  # 一个图的子图数量：行数和列数.
+        row_num, col_num = 4, 6  # 一个图的子图数量：行数和列数.
         num = 0  # 列的索引号.
         for col in data.columns:
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             # 绘制直方图.
             name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
@@ -753,13 +753,13 @@ class DataExplorer:
         plt.show()
 
     def _box_plot(self, data: DataFrame = None) -> None:
-        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        row_num, col_num = 4, 6  # 一个图的行数和列数.
         num = 0  # 列的索引号.
         for col in data.columns:
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             plt.xlabel(col + '(Ftype:' + self._field_info.loc[col, 'Ftype'] + ")")
             sns.boxplot(data[col], orient='v', width=0.5)  # 绘制直方图
@@ -774,13 +774,13 @@ class DataExplorer:
         :return:
         """
 
-        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        row_num, col_num = 4, 6  # 一个图的行数和列数.
         num = 0  # 列的索引号.
         for col in data.columns:
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             stats.probplot(data[col], plot=plt)  # 绘制直方图
             name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
@@ -809,13 +809,13 @@ class DataExplorer:
                 for j in range(i + 1, len(self._value_field_list)):
                     tuple_list.append((row, self._value_field_list[j]))
 
-        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        row_num, col_num = 4, 6  # 一个图的行数和列数.
         num = 0  # 列的索引号.
         for (row_name, col_name) in tuple_list:
             k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
                 plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             name = f'{col_name}(Ftype:{self._field_info.loc[col_name, "Ftype"]})'
             sns.regplot(x=col_name, y=row_name, data=self._data,
@@ -835,7 +835,7 @@ class DataExplorer:
 
     def _class_field_relation_plot(self, data: DataFrame):
 
-        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        row_num, col_num = 4, 6  # 一个图的行数和列数.
         num = 0  # 列的索引号.
 
         for row_name in self._class_field_list:
@@ -850,7 +850,7 @@ class DataExplorer:
                 k = num % (row_num * col_num) + 1
                 if k == 1:  # 每当k为1时，重新创建一个图.
                     plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                    plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                    plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
                 axes = plt.subplot(row_num, col_num, k)  # 绘制第k个图.
                 df.plot(kind='bar', stacked=True, ax=axes)
                 title = f'p={"{:.2f}".format(p_value)},chi_square={"{:.2f}".format(chi_square)}'
@@ -861,7 +861,7 @@ class DataExplorer:
         plt.show()
 
     def _class_value_relation_plot(self, data: DataFrame):
-        row_num, col_num = 3, 4  # 一个图的行数和列数.
+        row_num, col_num = 4, 6  # 一个图的行数和列数.
         num = 0  # 列的索引号.
 
         for x in self._class_field_list:
@@ -869,7 +869,7 @@ class DataExplorer:
                 k = num % (row_num * col_num) + 1
                 if k == 1:  # 每当k为1时，重新创建一个图.
                     plt.figure(figsize=(20, 10))  # 初始化画布大小.
-                    plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 调整每个图之间的距离.
+                    plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
                 axes = plt.subplot(row_num, col_num, k)  # 绘制第k个图.
                 sns.set(style="darkgrid")
                 # 利用violinplot函数绘制小提琴图

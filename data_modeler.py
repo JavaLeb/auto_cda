@@ -8,10 +8,11 @@ from tools import instantiate_class
 from operator import methodcaller
 from tools import print_with_sep_line, logger
 import joblib
-from sklearn.linear_model import LinearRegression
+
+from sklearn.linear_model import P
 
 model_dic = {
-    'sklearn.svm': ['SVC','LinearSVR','SVR'],
+    'sklearn.svm': ['SVC', 'LinearSVR', 'SVR'],
     'sklearn.ensemble': ['RandomForestRegressor', 'RandomForestClassifier'],
     'sklearn.linear_model': ['LinearRegression']
 }
@@ -19,13 +20,14 @@ model_dic = {
 
 class DataModeler:
     def __init__(self, conf: Configuration):
+        self._conf = conf.conf
         data_modeler_conf = conf.data_modeler_conf
         save_predict = data_modeler_conf.get('save_predict')
         self._save_predict_path = save_predict.get('path')
         self._save_target_field = save_predict.get('target_name')
         self._best_model_params = None
         self._best_model_params = []
-        self._target_fields = data_modeler_conf.get('target_fields')
+        self._target_field = self._conf.get('global').get('target_field')
 
         fine_tune_path = data_modeler_conf.get('fine_tune')
         if '.' not in fine_tune_path:
@@ -66,14 +68,13 @@ class DataModeler:
     def model(self, train_data: DataFrame = None, valid_data: DataFrame = None):
         logger.info('开始数据建模...................')
         # 目标字段处理（如果未配置目标字段，数据中的最后一个字段认定为是目标字段）.
-        self._target_fields = list(set(self._target_fields) & set(train_data.columns))
-        if not self._target_fields:
-            self._target_fields = train_data.columns[-1]
+        if self._target_field not in train_data.columns:
+            raise Exception('目标字段配置错误，请检查配置global->target_field')
         # 训练数据和验证数据的特征与目标字段分离.
-        train_feature_data = train_data.drop(columns=self._target_fields).values
-        train_target_data = train_data[self._target_fields].values
-        valid_feature_data = valid_data.drop(columns=self._target_fields).values
-        valid_target_data = valid_data[self._target_fields].values
+        train_feature_data = train_data.drop(columns=self._target_field).values
+        train_target_data = train_data[self._target_field].values
+        valid_feature_data = valid_data.drop(columns=self._target_field).values
+        valid_target_data = valid_data[self._target_field].values
 
         if self._label_encoder_name:
             if '.' not in self._label_encoder_name:
@@ -184,7 +185,7 @@ class DataModeler:
             joblib.dump(best_model, f'{dir_path}/{best_model}.pkl')
 
     def predict(self, data: DataFrame):
-        drop_columns = list(set(self._target_fields) & set(data.columns))
+        drop_columns = list(set(self._target_field) & set(data.columns))
         if drop_columns:
             feature_data = data.drop(columns=drop_columns).values
         else:

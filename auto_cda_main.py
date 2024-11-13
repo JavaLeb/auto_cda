@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import PCA
 
+
 # conf = Configuration(conf_path=r'conf/ml_config.yml')
 # root = conf.data_processor_conf.get('field_transformer')
 
@@ -96,7 +97,6 @@ class PCATransformer(BaseEstimator, TransformerMixin):
 
 
 if __name__ == '__main__':
-
     conf = Configuration(conf_path=r'conf/ml_config.yml')
 
     # 数据读取.
@@ -110,25 +110,27 @@ if __name__ == '__main__':
     train_data_explorer.explore()
 
     # # 测试数据探索.
-    # test_data_explore = DataExplorer(test_data, conf=conf)
-    # test_data_explore.explore()
+    test_data_explore = DataExplorer(test_data, conf=conf)
+    test_data_explore.explore()
 
     # 训练数据、测试数据比较.
     # train_data_explorer.compare(test_data_explore)
 
     data_processor = DataProcessor(data_explorer=train_data_explorer, conf=conf)
-    data = data_processor.process(train_data)
-    data_explore = DataExplorer(data, conf=conf)
-    data_explore.explore()
-    #
-    # # 数据切分.
-    # data_splitter = DataSplitter(conf=conf)
-    # train_data_list, valid_data_list = data_splitter.split(data)
-    # train_data = train_data_list[0]
-    # valid_data = valid_data_list[0]
-    #
-    # data_modeler = DataModeler(conf=conf)
-    # data_modeler.model(train_data, valid_data)
-    # # 数据处理.
+    processed_train_data = data_processor.process(train_data)
+
+    # 对处理过的数据进一步探索.
+    processed_train_data_explore = DataExplorer(processed_train_data, conf=conf)
+    processed_train_data_explore.explore()
+
+    # 数据切分.
+    data_splitter = DataSplitter(conf=conf)
+    train_data_list, valid_data_list = data_splitter.split(processed_train_data)
+    train_data = train_data_list[0]
+    valid_data = valid_data_list[0]
+
+    # 模型处理.
+    data_modeler = DataModeler(conf=conf)
+    data_modeler.model(train_data, valid_data)
 
     print('程序结束！')
