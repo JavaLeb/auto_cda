@@ -45,9 +45,9 @@ def instantiate_class(class_path, **params):
     # 获取类
     class_ = getattr(module, class_name)
     # 实例化类
-    if class_name == 'MinMaxScaler':
-        instant = class_(feature_range=(-1, 1))
-    elif params:
+    if class_name == 'MinMaxScaler' and 'feature_range' in params:  # 元组处理.
+        params.update({'feature_range': tuple(params.get('feature_range'))})
+    if params:
         instant = class_(**params)
     else:
         instant = class_()

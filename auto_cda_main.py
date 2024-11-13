@@ -109,16 +109,17 @@ if __name__ == '__main__':
     train_data_explorer = DataExplorer(train_data, conf=conf)
     train_data_explorer.explore()
 
-    # 测试数据探索.
-    test_data_explore = DataExplorer(test_data, conf=conf)
-    test_data_explore.explore()
+    # # 测试数据探索.
+    # test_data_explore = DataExplorer(test_data, conf=conf)
+    # test_data_explore.explore()
 
     # 训练数据、测试数据比较.
     # train_data_explorer.compare(test_data_explore)
 
     data_processor = DataProcessor(data_explorer=train_data_explorer, conf=conf)
     data = data_processor.process(train_data)
-
+    data_explore = DataExplorer(data, conf=conf)
+    data_explore.explore()
     #
     # # 数据切分.
     # data_splitter = DataSplitter(conf=conf)

@@ -37,6 +37,7 @@ transformer_dic = {
 class DataProcessor:
     def __init__(self, conf: Configuration, data_explorer: DataExplorer):
         self._conf = conf.conf
+        self._target_field = self._conf.get('global').get('target_field')
         # 不安全，后期考虑如何处理.
 
         self._class_field_list = data_explorer.class_field_list
@@ -304,16 +305,31 @@ class DataProcessor:
             raise Exception(f'缺失值清洗错误，清洗参数配置错误！参数信息：{fill_params}，异常信息：{e}')
 
     def transform_field(self, data: DataFrame = None) -> DataFrame:
-
+        """
+        这里根据需要自定义实现转换逻辑：Pipeline + ColumnTransformer.
+         transformer = Pipeline(steps=[
+             ('pre', ColumnTransformer(transformers=[
+                 ('standard_scaler', StandardScaler(), ['V0', 'V1']),
+                 ('min_max_scaler', MinMaxScaler(), ['V2', 'V3'])
+             ], remainder='passthrough')),
+             ('pca', PCA(n_components=0.9))
+         ])
+         result = transformer.fit_transform(data)
+        :param data:
+        :return:
+        """
         if not self._field_transformer_conf:  # 如果未配置了转换器.
             return data
+        target_data = None
+        if self._target_field in data.columns:
+            target_data = data[self._target_field]
+            data = data.drop(columns=[self._target_field])
         steps = self._field_transformer_conf.get('steps')
         step_instance_list = []
         for step in steps:
             step_name = step.get('step_name')
             if 'column_transformer' in step.keys():
                 column_transformer = step.get('column_transformer')
-
                 column_transformer_instance = self.build_column_transformer(column_transformer, data)
                 step_instance_list.append((step_name, column_transformer_instance))
             elif 'transformer' in step.keys():
@@ -323,17 +339,11 @@ class DataProcessor:
 
         pipeline = Pipeline(steps=step_instance_list)
         transformed_data = pipeline.fit_transform(data)
-
-        # 这里根据需要自定义实现转换逻辑：Pipeline + ColumnTransformer.
-        # 暂未做到配置化.
-        # transformer = Pipeline(steps=[
-        #     ('pre', ColumnTransformer(transformers=[
-        #         ('standard_scaler', StandardScaler(), ['V0', 'V1']),
-        #         ('min_max_scaler', MinMaxScaler(), ['V2', 'V3'])
-        #     ], remainder='passthrough')),
-        #     ('pca', PCA(n_components=0.9))
-        # ])
-        # result = transformer.fit_transform(data)
+        new_columns = pipeline.get_feature_names_out() if transformed_data.shape[1] != len(
+            data.columns) else data.columns
+        transformed_data = pd.DataFrame(data=transformed_data, columns=new_columns)
+        if target_data is not None:
+            transformed_data = pd.concat([transformed_data,target_data],axis=1)
 
         return transformed_data
 
@@ -345,9 +355,14 @@ class DataProcessor:
             fields = transformer.get('fields')
             if fields is None or len(fields) == 0:
                 continue
-            fields = list(set(fields) & set(data.columns))
-            if len(fields) == 0:
-                break
+            if (len(fields) == 1 and fields[0] == '*') or fields == '*':
+                fields = [col for col in data.columns if col != self._target_field]
+            else:
+                fields = list(set(fields) & set(data.columns))
+                if len(fields) > 0:
+                    fields = [col for col in fields if col != self._target_field]
+                if len(fields) == 0:
+                    continue
             transformer_name = transformer.get('transformer_name')
             transformer_instance = transformer.get('transformer')
             cls = self.build_transformer(transformer_instance)
@@ -370,7 +385,8 @@ class DataProcessor:
                     module_path = path + '.' + instance
                     find = True
             if not find:
-                raise Exception(f'未找到{module_path}, 请配置transformer全路径')
+                module_path = 'data_processor.' + instance
+                # raise Exception(f'未找到{module_path}, 请配置transformer全路径')
         if instance_params is not None and len(instance_params) > 0:
             cls = instantiate_class(module_path, **instance_params)
         else:
@@ -378,58 +394,6 @@ class DataProcessor:
             cls = instantiate_class(module_path, **instance_params)
 
         return cls
-
-    def transform_field_back(self, data: DataFrame = None) -> DataFrame:
-        if not self._field_transformer_conf:  # 如果配置了转换器.
-            return data
-
-        for col in data.columns:
-            col_steps = []
-            for field_transformer in self._field_transformer_conf:
-                fields = field_transformer.get('fields')
-                fields = list(set(fields) & set(data.columns))
-                if col not in fields:  # 没有配置字段忽略转换.
-                    continue
-                transformers = field_transformer.get('transformers')
-                for transformer in transformers:
-                    transformer_name = transformer.get('name')
-                    if not transformer_name:
-                        continue
-                    params = transformer.get('params')
-                    module_path = transformer_name
-                    if not transformer_name:
-                        break
-                    for key, value in transformer_dic.items():
-                        if transformer_name in value:
-                            module_path = key + '.' + transformer_name
-                            break
-                    if '.' not in module_path:
-                        module_path = 'data_processor.' + module_path
-                    if params:
-                        transformer_cls = instantiate_class(module_path, **params)
-                    else:
-                        transformer_cls = instantiate_class(module_path)
-                    col_steps.append((transformer_name, transformer_cls))
-
-            if len(col_steps) == 0:
-                continue
-            pipeline = Pipeline(col_steps)  # 一个列的处理流程.
-            if col_steps[0][0] == 'TfidfVectorizer':  # 需要使用data[col]，而不能使用data[[col]]
-                transformed_data = pipeline.fit_transform(data[col])
-            else:
-                transformed_data = pipeline.fit_transform(data[[col]])
-            import scipy as sp
-            if sp.sparse.issparse(transformed_data):
-                transformed_data = transformed_data.toarray()
-            if transformed_data.shape[1] == 1:  # 转换前后列数不变，直接赋值.
-                data[col] = transformed_data
-            else:  # 转换以后列数改变，删除后新增.
-                columns = [str(col) + '_' + str(i) for i in range(transformed_data.shape[1])]
-                transformed_data = pd.DataFrame(data=transformed_data, columns=columns)
-                data = data.drop(columns=[col])
-                data = pd.concat([data, transformed_data], axis=1)
-
-        return data
 
 
 class GeneralizationTransformer(BaseEstimator, TransformerMixin):
@@ -527,10 +491,19 @@ class BoxCoxTransformer(BaseEstimator, TransformerMixin):
 
     def fit(self, X, y=None):
         self.n_features_in_ = X.shape[1]
-        self.feature_names_in_ = X.columns
         return self
 
     def transform(self, X):
-        xt, _ = stats.boxcox(X)
+        if np.any(X <= 0):
+            scaler = MinMaxScaler()
+            X = scaler.fit_transform(X) + 1e-20
+        # 遍历每一列
+        for col_idx in range(self.n_features_in_):
+            current_column = X[:, col_idx]
+            xt, _ = stats.boxcox(current_column)
+            X[:, col_idx] = xt
 
-        return xt
+        return X
+
+    def get_feature_names_out(self, input_features=None):
+        return ['box_cox_' + str(i) for i in range(self.n_features_in_)]

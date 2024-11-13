@@ -35,7 +35,7 @@ data_source:
 #   数值型类别字段. 无需配置 class_value_fields = class_fields - class_text_fields.
 # ===================================================================================================================
 global:
-  target_field: pm2.5
+  target_field: target
   class_fields: [ ]
   class_text_fields: [ ]
 
@@ -216,16 +216,15 @@ data_processor:
       - step_name: pre
         column_transformer:
           transformers:
-            - transformer_name: standard_scaler
-              transformer:
-                instance: StandardScaler
-                params:
-              fields: [ 'V0', 'V1' ]
             - transformer_name: min_max_scaler
               transformer:
                 instance: MinMaxScaler
-                params:
-              fields: [ 'V2', 'V3' ]
+#                params: { feature_range: [0,1] }
+              fields: [ '*' ]
+          params:
+      - step_name: box_cox
+        transformer:
+          instance: BoxCoxTransformer
           params:
       - step_name: pca
         transformer:
