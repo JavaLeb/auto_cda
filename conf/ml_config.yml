@@ -4,18 +4,18 @@
 data_source:
   type: file #数据源类型
   format: txt # 文件的格式（支持excel、txt、csv）
-  field_sep: '\t' # 字段（属性、特征）之间的分隔符.
+  field_sep: ',' # 字段（属性、特征）之间的分隔符.
 
   #    train_path: data\sina\sina_train.csv
 
-  train_path: data/zhengqi/zhengqi_train.txt
-  test_path: data/zhengqi/zhengqi_test.txt
+#  train_path: data/zhengqi/zhengqi_train.txt
+#  test_path: data/zhengqi/zhengqi_test.txt
 
   #  train_path: data/pm25/pm25_train.csv
   #  test_path: data/pm25/pm25_test.csv
 
-  #  train_path: data\housing\housing.csv
-  #  test_path: data\housing\housing.csv
+  train_path: data\housing\housing_train.csv
+  test_path: data\housing\housing_test.csv
 
   #  train_path: data\sina\sina_train.csv
   #  test_path: data\sina\sina_test_X.csv
@@ -35,7 +35,7 @@ data_source:
 #   数值型类别字段. 无需配置 class_value_fields = class_fields - class_text_fields.
 # ===================================================================================================================
 global:
-  target_field: target
+  target_field: median_house_value
   class_fields: [ ]
   class_text_fields: [ ]
 
@@ -123,7 +123,7 @@ data_processor:
   field_selection:
     drop_fields: [ V5, V9, V11, V17, V22, V28 ]
     variance_threshold_selection:
-      - fields: [ longitude ]
+      - fields: [  ]
         threshold: 1000000
       - fields: [ ]
         threshold:
@@ -178,9 +178,11 @@ data_processor:
         detector: 3sigma   # 支持3sigma、IQR
         clean_method:   # 同 na_cleaners: clean_method.
     na_cleaners:
-      - fields: [ ocean_proximity ]
-        clean_method: rfc_fill
-  #        fill_params: { strategy: mean ,fill_value:, add_indicator: true}
+      - fields: [ longitude ]
+        clean_method: rfr_fill
+#        fill_params: { strategy: mean,
+#                       fill_value:,
+#                       add_indicator: true}
 
   # ---------------------------------------------------------------------------------------------------------------
   # 字段转换器配置.
@@ -213,23 +215,35 @@ data_processor:
   # ---------------------------------------------------------------------------------------------------------------
   field_transformer:
     steps:
-      - step_name: pre
+      - step_name: encoder
         column_transformer:
           transformers:
-            - transformer_name: min_max_scaler
+            - transformer_name: label_encoder
               transformer:
-                instance: MinMaxScaler
-              #                params: { feature_range: [0,1] }
-              fields: [ '*' ]
+                instance: OrdinalEncoder
+              fields: [ ocean_proximity ]
           params:
-      - step_name: box_cox
+      - step_name: min_max_scaler
         transformer:
-          instance: BoxCoxTransformer
+          instance: MinMaxScaler
           params:
-      - step_name: pca
-        transformer:
-          instance: PCA
-          params: { n_components: 0.9 }
+#      - step_name: pre
+#        column_transformer:
+#          transformers:
+#            - transformer_name: min_max_scaler
+#              transformer:
+#                instance: MinMaxScaler
+#              #                params: { feature_range: [0,1] }
+#              fields: [ '*' ]
+#          params:
+#      - step_name: box_cox
+#        transformer:
+#          instance: BoxCoxTransformer
+#          params:
+#      - step_name: pca
+#        transformer:
+#          instance: PCA
+#          params: { n_components: 0.9 }
 
 # ===================================================================================================================
 # 数据模型配置. 最佳模型：对于不同模型、不同参数，将根据评估指标选择对应的最佳模型.

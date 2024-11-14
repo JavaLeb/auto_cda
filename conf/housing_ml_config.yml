@@ -5,8 +5,8 @@ data_source:
   type: file #数据源类型
   format: txt # 文件的格式（支持excel、txt、csv）
   field_sep: ',' # 字段（属性、特征）之间的分隔符.
-  train_path: ../data/housing/housing.csv
-  test_path: ../data/housing/housing.csv
+  train_path: ../data/housing/housing_train.csv
+  test_path: ../data/housing/housing_train.csv
   header: 0 # 标题行.
 
 # ================================================================================================

@@ -4,27 +4,19 @@ from tools import get_fields, instantiate_class, print_with_sep_line
 from pandas import DataFrame
 from typing import List
 from scipy import stats
-from sklearn.pipeline import Pipeline
-from tools import logger
-from sklearn.base import BaseEstimator, TransformerMixin
+from tools import logger, is_empty, is_not_empty
 from sklearn.impute import SimpleImputer, KNNImputer
-from xgboost import XGBClassifier, XGBRegressor
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import *
 import numpy as np
 from typing import Union
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer, make_column_transformer
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.decomposition import PCA
 from sklearn.feature_selection import VarianceThreshold
 from data_explorer import DataExplorer
 
 # 配置.
-ORDINAL_ENCODER_FIELDS = 'ordinal_encoder_fields'
-ONE_HOT_ENCODER_FIELDS = 'one_hot_encoder_fields'
-
 DROP_FIELDS = 'drop_fields'
 
 transformer_dic = {
@@ -35,15 +27,15 @@ transformer_dic = {
 
 
 class DataProcessor:
-    def __init__(self, conf: Configuration, data_explorer: DataExplorer):
+    def __init__(self, conf: Configuration, base_data_explorer: DataExplorer):
         self._conf = conf.conf
-        self._target_field = self._conf.get('global').get('target_field')
-        # 不安全，后期考虑如何处理.
+        # 基数据: 比如处理测试数据缺失值时，使用训练数据的统计量填充.
+        # 此时，训练数据就是基数据，测试数据是要处理的数据.
+        self._base_data = base_data_explorer.data()
 
-        self._class_field_list = data_explorer.class_field_list
-        self._class_text_field_list = data_explorer.class_text_field_list
-        self._class_value_field_list = data_explorer.class_value_field_list
-        self._object_field_list = data_explorer.object_field_list
+        # 获取目标字段.
+        self._target_field = self._conf.get('global').get('target_field')
+
         # 获取配置.
         self._data_processor_conf = conf.data_processor_conf
         # 一级配置.
@@ -53,28 +45,63 @@ class DataProcessor:
         # 二级配置.
         self._na_cleaners_conf = self._field_cleaner_conf.get('na_cleaners')
 
-    def process(self, data: DataFrame = None) -> DataFrame:
-        logger.info('数据处理开始......................')
-        data = self.select_field(data, [])
-        data = self.clean_field(data)
-        data = self.transform_field(data)
-        logger.info('数据处理完成！！！！！！！！！！！！！')
-        return data
+        # 获取待删除的字段.
+        drop_fields = self._field_selection_conf.get(DROP_FIELDS)
+        if drop_fields is None or len(drop_fields) == 0:
+            self._drop_fields = []
+        else:
+            self._drop_fields = list(set(drop_fields) & set(self._base_data.columns))
 
-    def select_field(self, data: DataFrame = None, drop_fields: List = None) -> DataFrame:
-        drop_fields = set(drop_fields) | set(get_fields(self._field_selection_conf, DROP_FIELDS, data.columns))
-        if drop_fields:
-            data = data.drop(drop_fields, axis=1)
+        self._class_field_list = base_data_explorer.class_field_list
+        self._class_text_field_list = base_data_explorer.class_text_field_list
+        self._class_value_field_list = base_data_explorer.class_value_field_list
+        self._object_field_list = base_data_explorer.object_field_list
+
+        # 方差阈值删除字段.
+        self._variance_threshold_fields = self._variance_threshold(self._base_data)
+
+    def process(self, data: DataFrame = None) -> DataFrame:
+
+        logger.info('数据处理开始......................')
+        selected_data = self.select_field(data)
+        cleaned_data = self.clean_field(selected_data)
+        transformed_data = self.transform_feature(cleaned_data)
+        logger.info('数据处理完成！！！！！！！！！！！！！')
+
+        return transformed_data
+
+    def select_field(self, data: DataFrame = None) -> DataFrame:
+        logger.info('字段选择开始..........')
+        # 非基数据字段，直接删除.
+        dropped_fields = [field for field in data.columns if field not in self._base_data.columns]
+        if len(dropped_fields) > 0:
+            print('待处理数据字段与当前数据处理器的基数据字段不一致, 将会被删除。')
+            selected_data = data.drop(columns=dropped_fields)
+            print('已删除待处理数据比基数据新增的如下字段：\n', dropped_fields)
+        else:
+            selected_data = data.copy()
+
+        # 删除字段.
+        drop_fields = [field for field in self._drop_fields if field in selected_data.columns]
+        if len(drop_fields) > 0:
+            print('删除配置中需要删除的字段：\n', drop_fields)
+            selected_data = selected_data.drop(drop_fields, axis=1)
 
         # 方差阈值选择特征.
-        data = self.variance_threshold(data)
+        print_with_sep_line(f"方差阈值特征选择前，原始特征数量: {len(selected_data.columns)}")
+        variance_threshold_fields = self._variance_threshold_fields
+        if len(variance_threshold_fields):
+            variance_threshold_fields = [field for field in self._variance_threshold_fields if
+                                         field in selected_data.columns]
+            selected_data = selected_data.drop(columns=variance_threshold_fields)
+        print(f'方差阈值特征选择，删除的特征数：{len(variance_threshold_fields)}')
+        print(f"方差阈值特征选择后，特征数量: {len(selected_data.columns)}")
 
-        return data
+        return selected_data
 
-    def variance_threshold(self, data: DataFrame):
-        logger.info("方差阈值字段选择开始...................")
+    def _variance_threshold(self, data: DataFrame):
+
         data_copy = data.copy()
-        print_with_sep_line(f"方差阈值特征选择前，原始特征数量: {len(data_copy.columns)}")
 
         # 文本类别字段需要编码，object字段不需要删除.
         if len(self._class_text_field_list) > 0:
@@ -117,43 +144,38 @@ class DataProcessor:
                 deleted_features = fields
             if deleted_features:
                 deleted_features_set.update(deleted_features)
-        # 统一删除.
-        if deleted_features_set:
-            data_copy = data_copy.drop(columns=list(deleted_features_set))
-        print(f'方差阈值特征选择，删除的特征数：{len(deleted_features_set)}')
-        print(
-            f"方差阈值特征选择后，特征数量: {len(data_copy.columns) + len(self._class_text_field_list) + len(self._object_field_list)}")
-        logger.info("方差阈值字段选择完成！！！！！！！！！！")
 
-        return data_copy
+        return list(deleted_features_set)
 
     def clean_field(self, data: DataFrame = None):
-        data = self.clean_na_field(data)
-        data = self.clean_outlier_field(data)
-
-        return data
+        logger.info('开始清洗数据........')
+        cleaned_na_data = self.clean_na_field(data)
+        cleaned_outlier_data = self.clean_outlier_field(cleaned_na_data)
+        logger.info('清洗数据完成！！！！！')
+        return cleaned_outlier_data
 
     def clean_na_field(self, data: DataFrame = None):
         """
         字段缺失值清洗.
-        :param data: 待缺失值清洗数据.
+        :param copy_data: 待缺失值清洗数据.
         :return: 缺失值清洗后的数据.
         """
+        copy_data = data.copy()
         for na_cleaner in self._na_cleaners_conf:
             fields = na_cleaner.get('fields')  # 获取清洗字段.
-            if not fields:  # 没有配置.
+            if is_empty(fields):  # 没有配置.
                 continue
-            fields = list(set(data.columns) & set(fields))  # 配置字段去重，且需要是数据的字段.
-            if not fields:  # 配置的非数据的字段.
+            fields = list(set(copy_data.columns) & set(fields))  # 配置字段去重，且需要是数据的字段.
+            if is_empty(fields):  # 配置的非数据的字段.
                 continue
-            fields = data[fields].isna().any().loc[lambda x: x].index
-            if len(fields) == 0:
+            fields = copy_data[fields].isna().any().loc[lambda x: x].index.tolist()  # 没有缺失值字段.
+            if is_empty(fields):
                 continue
             clean_method = na_cleaner.get('clean_method')  # 获取清洗方法.
-            if not clean_method:  # 未配置清洗方法.
+            if is_empty(clean_method):  # 未配置清洗方法.
                 continue
             fill_params = na_cleaner.get('fill_params')  # 获取填充方法的参数.
-            if fill_params:
+            if is_not_empty(fill_params):
                 if fill_params.get('add_indicator') is True:
                     add_indicator = True
                     fill_params['add_indicator'] = True
@@ -164,24 +186,21 @@ class DataProcessor:
                 add_indicator = False
                 fill_params = {}
             if clean_method == 'drop':  # 删除字段.
-                data = data.drop(fields, axis=1)
+                copy_data = copy_data.drop(fields, axis=1)
             elif clean_method == 'drop_na':  # 删除缺失值记录.
-                data = data.dropna(subset=fields).reset_index(drop=True)
+                copy_data = copy_data.dropna(subset=fields).reset_index(drop=True)
             elif clean_method == 'simple_fill':  # 填充.
-                imputer_name = 'sklearn.impute.SimpleImputer'
-                self._imputer_fill(imputer_name=imputer_name, fill_params=fill_params, add_indicator=add_indicator,
-                                   fields=fields,
-                                   data=data)
+                self._simple_fill(data=copy_data, fields=fields, fill_params=fill_params, add_indicator=add_indicator)
             elif clean_method == 'knn_fill':
-                self._knn_fill(data=data, fields=fields, fill_params=fill_params, add_indicator=add_indicator)
+                self._knn_fill(data=copy_data, fields=fields, fill_params=fill_params, add_indicator=add_indicator)
             elif clean_method == 'rfr_fill':
-                self._rfr_fill(data=data, fields=fields, fill_params=fill_params)
+                self._rfr_fill(data=copy_data, fields=fields, fill_params=fill_params)
             elif clean_method == 'rfc_fill':
-                self._rfc_fill(data=data, fields=fields, fill_params=fill_params)
+                self._rfc_fill(data=copy_data, fields=fields, fill_params=fill_params)
             else:
                 raise Exception(f'不支持的清洗方法{clean_method}')
 
-        return data
+        return copy_data
 
     def clean_outlier_field(self, data: DataFrame):
         data_copy = data.copy()
@@ -236,32 +255,39 @@ class DataProcessor:
 
     def _rfr_fill(self, data, fields, fill_params):
         rf = instantiate_class('sklearn.ensemble.RandomForestRegressor', **fill_params)
-        select_data = data.select_dtypes(include=[np.number, int, float])
+        base_data = self._base_data.select_dtypes(include=[np.number, int, float])
+        predict_data = data.select_dtypes(include=[np.number, int, float])
         for field in fields:
-            dropped_na = select_data.dropna(subset=[field])
-            X = dropped_na.drop([field], axis=1)
-            y = dropped_na[field]
-            isnull = select_data[field].isnull()
-            test_X = select_data[isnull].drop([field], axis=1)
-            rf.fit(X, y)
-            predict = rf.predict(test_X)
-            predict = pd.Series(predict)
-            data[field] = data[field].fillna(pd.Series(predict).repeat(len(predict)).reset_index(drop=True))
+            dropped_na = base_data.dropna(subset=[field])  # 删除当前字段缺失值的行.
+            train_X = dropped_na.drop([field], axis=1)  # 删除当前字段，作为训练数据的特征
+            train_y = dropped_na[field]  # 当前字段数据作为训练数据的标签.
+            rf.fit(train_X, train_y)  # 拟合模型.
+
+            isnull = predict_data[field].isnull()
+            test_X = predict_data[isnull].drop([field], axis=1)
+
+            predict_result = rf.predict(test_X)
+            predict_result = pd.Series(predict_result)
+            data[field] = data[field].fillna(
+                pd.Series(predict_result).repeat(len(predict_result)).reset_index(drop=True))
 
     def _rfc_fill(self, data, fields, fill_params):
         rf = instantiate_class('sklearn.ensemble.RandomForestClassifier', **fill_params)
-        select_data = data.select_dtypes(include=[np.number, int, float])
+        base_data = self._base_data.select_dtypes(include=[np.number, int, float])
+        selected_data = data.select_dtypes(include=[np.number, int, float])
         for field in fields:
-            if field not in select_data.columns:
-                select_data[field] = data[field]
-            dropped_na = select_data.dropna(subset=[field])
+            if field not in base_data.columns:
+                base_data[field] = data[field]
+            dropped_na = base_data.dropna(subset=[field])
             X = dropped_na.drop([field], axis=1)
             label_encoder = LabelEncoder()
             y = dropped_na[field]
             y = label_encoder.fit_transform(y)
-            isnull = select_data[field].isnull()
-            test_X = select_data[isnull].drop([field], axis=1)
             rf.fit(X, y)
+
+            isnull = selected_data[field].isnull()
+            test_X = selected_data[isnull].drop([field], axis=1)
+
             predict = rf.predict(test_X)
             predict = label_encoder.inverse_transform(predict)
             predict = pd.Series(predict)
@@ -270,42 +296,48 @@ class DataProcessor:
     def _knn_fill(self, data, fields, fill_params, add_indicator):
         imputer_name = 'sklearn.impute.KNNImputer'
         imputer = instantiate_class(imputer_name, **fill_params)
-        fit_data = data.select_dtypes(include=[np.number, int, float])
-        imputer.fit(fit_data)
+        fit_data = self._base_data.select_dtypes(include=[np.number, int, float])
+        imputer.fit(fit_data)   # 使用基数据拟合.
         if add_indicator:
             for field in fields:
-                field_filled = imputer.transform(data[[field]])
-                if field_filled.shape[1] == 1:
-                    data[field] = field_filled
+                filled_data = imputer.transform(data[[field]])
+                if filled_data.shape[1] == 1:
+                    data[field] = filled_data
                 else:  # 从第二列开始，都为指示变量.
-                    columns = [field + '_indicator_' + str(i) for i in range(field_filled.shape[1] - 1)]
-                    data[field] = field_filled[:, 0]
-                    data[columns] = field_filled[:, 1:]
+                    columns = [field + '_indicator_' + str(i) for i in range(filled_data.shape[1] - 1)]
+                    data[field] = filled_data[:, 0]
+                    data[columns] = filled_data[:, 1:]
         else:
-            fields_filled = imputer.transform(fit_data)
-            fields_filled = pd.DataFrame(data=fields_filled, columns=fit_data.columns)
-            data[fields] = fields_filled[fields]
+            filled_data = imputer.transform(data[fit_data.columns])
+            filled_data = pd.DataFrame(data=filled_data, columns=fit_data.columns)
+            data[fields] = filled_data[fields]
 
-    def _imputer_fill(self, imputer_name, fill_params, add_indicator, fields, data):
+    from sklearn.impute import SimpleImputer
+    def _simple_fill(self, data, fields, fill_params, add_indicator):
+        imputer_name = 'sklearn.impute.SimpleImputer'
         try:
             imputer = instantiate_class(imputer_name, **fill_params)
             if add_indicator:
                 for field in fields:
-                    field_filled = imputer.fit_transform(data[[field]])
-                    if field_filled.shape[1] == 1:
-                        data[field] = field_filled
+                    imputer.fit(self._base_data[[field]])  # 使用基数据拟合.
+                    filled_data = imputer.transform(data[[field]])
+                    if filled_data.shape[1] == 1:
+                        data[field] = filled_data
                     else:  # 从第二列开始，都为指示变量.
-                        columns = [field + '_indicator_' + str(i) for i in range(field_filled.shape[1] - 1)]
-                        data[field] = field_filled[:, 0]
-                        data[columns] = field_filled[:, 1:]
+                        columns = [field + '_indicator_' + str(i) for i in range(filled_data.shape[1] - 1)]
+                        data[field] = filled_data[:, 0]
+                        data[columns] = filled_data[:, 1:]
             else:
-                fields_filled = imputer.fit_transform(data[fields])
-                data[fields] = fields_filled
+                imputer.fit(self._base_data[fields])
+                filled_data = imputer.transform(data[fields])
+                data[fields] = filled_data
         except Exception as e:
             raise Exception(f'缺失值清洗错误，清洗参数配置错误！参数信息：{fill_params}，异常信息：{e}')
 
-    def transform_field(self, data: DataFrame = None) -> DataFrame:
+    def transform_feature(self, data: DataFrame = None) -> DataFrame:
         """
+        注：只对特征字段转换，不转换目标字段.
+
         这里根据需要自定义实现转换逻辑：Pipeline + ColumnTransformer.
          transformer = Pipeline(steps=[
              ('pre', ColumnTransformer(transformers=[
@@ -315,35 +347,48 @@ class DataProcessor:
              ('pca', PCA(n_components=0.9))
          ])
          result = transformer.fit_transform(data)
+         注意：不可以两个step中都有ColumnTransformer，只可以第一个是ColumnTransformer，否则fields只能使用数字.
         :param data:
         :return:
         """
+
+        # 未配置转换器，直接返回原数据.
         if not self._field_transformer_conf:  # 如果未配置了转换器.
             return data
-        target_data = None
-        if self._target_field in data.columns:
-            target_data = data[self._target_field]
-            data = data.drop(columns=[self._target_field])
+
+        # 复制一份原数据.
+        copy_data = data.copy()
+        # 将数据分为特征数据和标签数据.
+        if self._target_field in copy_data.columns:
+            target_data = copy_data[self._target_field]
+            feature_copy_data = copy_data.drop(columns=[self._target_field])
+        else:
+            target_data = None
+            feature_copy_data = copy_data
+
+        # 处理转换器配置.
         steps = self._field_transformer_conf.get('steps')
         step_instance_list = []
         for step in steps:
             step_name = step.get('step_name')
             if 'column_transformer' in step.keys():
                 column_transformer = step.get('column_transformer')
-                column_transformer_instance = self.build_column_transformer(column_transformer, data)
+                column_transformer_instance = self.build_column_transformer(column_transformer, feature_copy_data)
                 step_instance_list.append((step_name, column_transformer_instance))
             elif 'transformer' in step.keys():
                 transformer = step.get('transformer')
                 cls = self.build_transformer(transformer)
                 step_instance_list.append((step_name, cls))
-
+        # 定义流水线.
         pipeline = Pipeline(steps=step_instance_list)
-        transformed_data = pipeline.fit_transform(data)
+        transformed_data = pipeline.fit_transform(feature_copy_data)
+        # 如果转换前后字段数不变，使用原字段名称，否则使用最后一个转换器的字段名称.
         new_columns = pipeline.get_feature_names_out() if transformed_data.shape[1] != len(
-            data.columns) else data.columns
+            feature_copy_data.columns) else feature_copy_data.columns
         transformed_data = pd.DataFrame(data=transformed_data, columns=new_columns)
+        # 连接目标字段.
         if target_data is not None:
-            transformed_data = pd.concat([transformed_data,target_data],axis=1)
+            transformed_data = pd.concat([transformed_data, target_data], axis=1)
 
         return transformed_data
 
@@ -363,10 +408,12 @@ class DataProcessor:
                     fields = [col for col in fields if col != self._target_field]
                 if len(fields) == 0:
                     continue
+            # 这里将字段名称转换为 数字，为了step中可以有多个column_transformer.
+            field_idx = [data.columns.values.tolist().index(field) for field in fields]
             transformer_name = transformer.get('transformer_name')
             transformer_instance = transformer.get('transformer')
             cls = self.build_transformer(transformer_instance)
-            transformers_list.append((transformer_name, cls, fields))
+            transformers_list.append((transformer_name, cls, field_idx))
         if column_transformer_params is not None and len(column_transformer_params) > 0:
             column_transformer_instance = ColumnTransformer(transformers=transformers_list,
                                                             **column_transformer_params)

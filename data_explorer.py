@@ -11,7 +11,7 @@ from scipy import stats
 import re
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import OrdinalEncoder
 from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
 import statsmodels.api as sm
 
@@ -27,7 +27,7 @@ DUPLICATE_FIELDS = 'duplicate_fields'
 
 
 class DataExplorer:
-    def __init__(self, data: DataFrame, conf: Configuration) -> None:
+    def __init__(self, data: DataFrame, conf: Configuration, is_train_data: bool = True) -> None:
         self._conf = conf.conf
         self._data = data  # 数据初始化.
         self._data_explorer_conf = conf.data_explorer_conf
@@ -85,8 +85,8 @@ class DataExplorer:
         self._target_field = self._conf.get('global').get('target_field')
         if self._target_field is None:
             raise Exception('目标字段未配置，请检查配置global->target_field')
-        # elif self._target_field not in data.columns:
-        #     raise Exception('目标字段配置错误，非数据字段，请检查配置global->target_field')
+        elif is_train_data and self._target_field not in data.columns:
+            raise Exception(f'目标字段{self._target_field}配置错误，非数据字段，请检查配置global->target_field')
 
         if self._relation_threshold is None:
             self._relation_threshold = 0.5
@@ -484,12 +484,12 @@ class DataExplorer:
         :param data: 待检测数据
         :return:
         """
-        data_copy = self._data
+        data_copy = self._data.copy()
         fields = list(set(self._class_value_field_list + self._value_field_list))
         if len(self._class_text_field_list) > 0:
             fields = list(set(fields + self._class_text_field_list))
-            label_encoder = LabelEncoder()
-            x = label_encoder.fit_transform(data_copy[self._class_text_field_list])
+            encoder = OrdinalEncoder()
+            x = encoder.fit_transform(data_copy[self._class_text_field_list])
             data_copy[self._class_text_field_list] = pd.DataFrame(data=x.ravel())
         # 3sigma检测异常值. 只能用于数值型.
         sigma_outliers_count, sigma_outlier_first_index = \
@@ -644,6 +644,7 @@ class DataExplorer:
         # 多重共线性. 需要移除目标字段，添加常数字段.
         fields = [field for field in self._value_field_list if field != self._target_field]
         copy_data = data[fields].copy()
+        copy_data = copy_data.dropna()
         copy_data = sm.add_constant(copy_data)  # 会添加在最前面
         vif_value = [vif(copy_data, i) for i in range(1, len(copy_data.columns))]
         self._value_field_info['vif-value'] = pd.DataFrame(data=vif_value, index=fields)

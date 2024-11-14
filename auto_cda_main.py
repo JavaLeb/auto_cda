@@ -99,25 +99,26 @@ class PCATransformer(BaseEstimator, TransformerMixin):
 if __name__ == '__main__':
     conf = Configuration(conf_path=r'conf/ml_config.yml')
 
-    # 数据读取.
+    # 1.数据读取.
     data_reader = DataReader(ds_type='file', conf=conf)
     train_data = data_reader.read_train()
     test_data = data_reader.read_test()
 
-    # 数据探索.
+    # 2.数据探索.
     # 训练数据探索.
     train_data_explorer = DataExplorer(train_data, conf=conf)
     train_data_explorer.explore()
-
-    # # 测试数据探索.
-    test_data_explore = DataExplorer(test_data, conf=conf)
-    test_data_explore.explore()
+    # 测试数据探索.
+    test_data_explorer = DataExplorer(test_data, conf=conf, is_train_data=False)
+    test_data_explorer.explore()
 
     # 训练数据、测试数据比较.
     # train_data_explorer.compare(test_data_explore)
 
-    data_processor = DataProcessor(data_explorer=train_data_explorer, conf=conf)
+    # 3.数据处理.
+    data_processor = DataProcessor(base_data_explorer=train_data_explorer, conf=conf)
     processed_train_data = data_processor.process(train_data)
+    processed_test_data = data_processor.process(test_data)
 
     # 对处理过的数据进一步探索.
     processed_train_data_explore = DataExplorer(processed_train_data, conf=conf)
@@ -130,7 +131,7 @@ if __name__ == '__main__':
     valid_data = valid_data_list[0]
 
     # 模型处理.
-    data_modeler = DataModeler(conf=conf)
-    data_modeler.model(train_data, valid_data)
+    # data_modeler = DataModeler(conf=conf)
+    # data_modeler.model(train_data, valid_data)
 
     print('程序结束！')

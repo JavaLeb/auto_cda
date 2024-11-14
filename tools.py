@@ -5,6 +5,8 @@ import zipfile
 import glob
 import configparser
 
+import pandas as pd
+
 logger = logging.getLogger('auto_cda_logger')
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
@@ -53,6 +55,21 @@ def instantiate_class(class_path, **params):
         instant = class_()
 
     return instant
+
+
+def is_empty(input):
+    if input is None:
+        return True
+    if isinstance(input, str) or isinstance(input, list) or isinstance(input, dict) or isinstance(input, set):
+        return len(input) == 0
+    elif isinstance(input, pd.DataFrame) or isinstance(input, pd.Index):
+        return input.empty
+    else:
+        raise Exception(f'{input}未知的类型{type(input)}')
+
+
+def is_not_empty(input):
+    return not is_empty(input)
 
 
 def package():

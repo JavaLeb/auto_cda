@@ -9,8 +9,6 @@ from operator import methodcaller
 from tools import print_with_sep_line, logger
 import joblib
 
-from sklearn.linear_model import P
-
 model_dic = {
     'sklearn.svm': ['SVC', 'LinearSVR', 'SVR'],
     'sklearn.ensemble': ['RandomForestRegressor', 'RandomForestClassifier'],
