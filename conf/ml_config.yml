@@ -178,6 +178,8 @@ data_processor:
         detector: 3sigma   # 支持3sigma、IQR
         clean_method:   # 同 na_cleaners: clean_method.
     na_cleaners:
+      - fields: [ total_bedrooms ]
+        clean_method: rfr_fill
       - fields: [ longitude ]
         clean_method: rfr_fill
 #        fill_params: { strategy: mean,
@@ -222,11 +224,17 @@ data_processor:
               transformer:
                 instance: OrdinalEncoder
               fields: [ ocean_proximity ]
+#            - transformer_name: min_max_scaler
+#              transformer:
+#                instance: MinMaxScaler
+#              fields: [ longitude ]
           params:
+
       - step_name: min_max_scaler
         transformer:
           instance: MinMaxScaler
           params:
+
 #      - step_name: pre
 #        column_transformer:
 #          transformers:
@@ -236,10 +244,12 @@ data_processor:
 #              #                params: { feature_range: [0,1] }
 #              fields: [ '*' ]
 #          params:
+
 #      - step_name: box_cox
 #        transformer:
 #          instance: BoxCoxTransformer
 #          params:
+
 #      - step_name: pca
 #        transformer:
 #          instance: PCA
@@ -293,12 +303,12 @@ data_modeler:
   #    name: LabelEncoder
   models:
     - estimator: sklearn.linear_model.LinearRegression
-      param_grid: [ ]
-    - estimator: sklearn.neighbors.KNeighborsRegressor
-    - estimator: sklearn.svm.SVR
-    - estimator: sklearn.tree.DecisionTreeRegressor
-    - estimator: sklearn.ensemble.RandomForestRegressor
-    - estimator: lightgbm.LGBMRegressor
+#      param_grid: [ ]
+#    - estimator: sklearn.neighbors.KNeighborsRegressor
+#    - estimator: sklearn.svm.SVR
+#    - estimator: sklearn.tree.DecisionTreeRegressor
+#    - estimator: sklearn.ensemble.RandomForestRegressor
+#    - estimator: lightgbm.LGBMRegressor
   #    - estimator: RandomForestClassifier
   fine_tune: RandomizedSearchCV
   assessments:
@@ -323,5 +333,4 @@ data_modeler:
   #      min_max: max
   #      params: { multi_class: ovo }
   save_predict:
-    path: result/predict_result.csv
-    target_name: [ channel_title ]
+    path: result/%Y-%m-%d_%H-%M-%S/predict_result.csv

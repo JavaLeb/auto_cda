@@ -3,7 +3,7 @@ import pandas as pd
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tools import logger
+from tools import logger, is_empty,is_not_empty
 from data_configuration import Configuration
 import numpy as np
 from pandas.io.formats.info import DataFrameInfo
@@ -334,6 +334,9 @@ class DataExplorer:
         else:
             value_fields = self._value_field_list
 
+        if is_empty(value_fields):
+            return self._data_info, self._value_field_info
+
         value_data = self._data[value_fields]
         mean_values = value_data.mean()
         median_values = value_data.median()
@@ -379,12 +382,9 @@ class DataExplorer:
         # 计算(u-3σ)和(u+3σ)
         sigma_lower = mean_values - 3 * std_values
         sigma_upper = mean_values + 3 * std_values
-        self._value_field_info['mean-3sigma'] = sigma_lower
-        self._value_field_info['mean+3sigma'] = sigma_upper
         sigma_outliers_count = value_data.apply(
             lambda col: ((col < sigma_lower[col.name]) | (col > sigma_upper[col.name]))
         )
-
         # 计算每个字段第一个缺失值的索引.
         sigma_outlier_first_index = sigma_outliers_count.idxmax(axis=0)  # 计算每列中第一个缺失值的索引.
         sigma_outlier_first_index = sigma_outlier_first_index.astype(str)

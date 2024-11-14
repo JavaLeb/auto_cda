@@ -183,12 +183,11 @@ class DataModeler:
             joblib.dump(best_model, f'{dir_path}/{best_model}.pkl')
 
     def predict(self, data: DataFrame):
-        drop_columns = list(set(self._target_field) & set(data.columns))
+        drop_columns = list({self._target_field} & set(data.columns))
         if drop_columns:
             feature_data = data.drop(columns=drop_columns).values
         else:
             feature_data = data.values
-        prediction_data = DataFrame()
         prediction = self._best_model[0].predict(feature_data)
         if self._label_encoder:
             prediction = self._label_encoder.inverse_transform(prediction)
@@ -199,11 +198,14 @@ class DataModeler:
     def save_predict(self, raw_data: DataFrame, data: DataFrame):
         logger.info('预测值保存开始.................')
         now = datetime.datetime.now()
-        datetime_str = now.strftime("%Y-%m-%d_%H-%M-%S")
-        dir_path = os.path.dirname(self._save_predict_path) + datetime_str
+        date_format = '%Y-%m-%d_%H-%M-%S'
+        datetime_str = now.strftime(date_format)
+        self._save_predict_path = str(self._save_predict_path).replace(date_format, datetime_str)
+        dir_path = os.path.dirname(self._save_predict_path)
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         prediction_data = self.predict(data)
+        prediction_data = pd.DataFrame(data=prediction_data.values, columns=[self._target_field])
         result = pd.concat([prediction_data, raw_data], axis=1)
         result.to_csv(self._save_predict_path, index=False)
         print('保存路径：\n', self._save_predict_path)

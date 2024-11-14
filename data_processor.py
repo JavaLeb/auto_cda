@@ -64,8 +64,11 @@ class DataProcessor:
 
         logger.info('数据处理开始......................')
         selected_data = self.select_field(data)
+
         cleaned_data = self.clean_field(selected_data)
+
         transformed_data = self.transform_feature(cleaned_data)
+
         logger.info('数据处理完成！！！！！！！！！！！！！')
 
         return transformed_data
@@ -297,7 +300,7 @@ class DataProcessor:
         imputer_name = 'sklearn.impute.KNNImputer'
         imputer = instantiate_class(imputer_name, **fill_params)
         fit_data = self._base_data.select_dtypes(include=[np.number, int, float])
-        imputer.fit(fit_data)   # 使用基数据拟合.
+        imputer.fit(fit_data)  # 使用基数据拟合.
         if add_indicator:
             for field in fields:
                 filled_data = imputer.transform(data[[field]])
@@ -381,11 +384,9 @@ class DataProcessor:
                 step_instance_list.append((step_name, cls))
         # 定义流水线.
         pipeline = Pipeline(steps=step_instance_list)
-        transformed_data = pipeline.fit_transform(feature_copy_data)
-        # 如果转换前后字段数不变，使用原字段名称，否则使用最后一个转换器的字段名称.
-        new_columns = pipeline.get_feature_names_out() if transformed_data.shape[1] != len(
-            feature_copy_data.columns) else feature_copy_data.columns
-        transformed_data = pd.DataFrame(data=transformed_data, columns=new_columns)
+        transformed_data = pipeline.fit_transform(X=feature_copy_data)
+        out_name = pipeline.get_feature_names_out()
+        transformed_data = pd.DataFrame(data=transformed_data, columns=pipeline.get_feature_names_out())
         # 连接目标字段.
         if target_data is not None:
             transformed_data = pd.concat([transformed_data, target_data], axis=1)
@@ -393,6 +394,7 @@ class DataProcessor:
         return transformed_data
 
     def build_column_transformer(self, column_transformer, data: DataFrame):
+
         transformers = column_transformer.get('transformers')
         column_transformer_params = column_transformer.get('params')
         transformers_list = []
@@ -415,10 +417,12 @@ class DataProcessor:
             cls = self.build_transformer(transformer_instance)
             transformers_list.append((transformer_name, cls, field_idx))
         if column_transformer_params is not None and len(column_transformer_params) > 0:
-            column_transformer_instance = ColumnTransformer(transformers=transformers_list,
-                                                            **column_transformer_params)
+            column_transformer_instance = RFNColumnTransformer(transformers=transformers_list,
+                                                               **column_transformer_params)
         else:
-            column_transformer_instance = ColumnTransformer(transformers=transformers_list, remainder='passthrough')
+            column_transformer_instance = RFNColumnTransformer(transformers=transformers_list,
+                                                               remainder='passthrough')
+
         return column_transformer_instance
 
     def build_transformer(self, transformer_instance):
@@ -441,6 +445,21 @@ class DataProcessor:
             cls = instantiate_class(module_path, **instance_params)
 
         return cls
+
+
+class DataCombiner:
+    def __init__(self):
+        pass
+
+    def combine(self, first_data: DataFrame, second_data: DataFrame, axis: int = 1):
+        first_data_copy = first_data.copy()
+        combine_flag_col = '__combiner__'
+        first_data_copy[combine_flag_col] = 'first'
+        second_data_copy = second_data.copy()
+        second_data_copy[combine_flag_col] = 'second'
+        combined_data = pd.concat([first_data, second_data], axis=axis)
+
+        return combined_data
 
 
 class GeneralizationTransformer(BaseEstimator, TransformerMixin):
@@ -554,3 +573,37 @@ class BoxCoxTransformer(BaseEstimator, TransformerMixin):
 
     def get_feature_names_out(self, input_features=None):
         return ['box_cox_' + str(i) for i in range(self.n_features_in_)]
+
+
+class RFNColumnTransformer(ColumnTransformer):
+    """
+    保留列名称不变. 顺序可能会变.
+    """
+
+    def __init__(self, transformers, remainder="drop", sparse_threshold=0.3, n_jobs=None, transformer_weights=None,
+                 verbose=False, verbose_feature_names_out=True, force_int_remainder_cols=True):
+        super().__init__(transformers, remainder=remainder, sparse_threshold=sparse_threshold, n_jobs=n_jobs,
+                         transformer_weights=transformer_weights, verbose=verbose,
+                         verbose_feature_names_out=verbose_feature_names_out,
+                         force_int_remainder_cols=force_int_remainder_cols)
+
+        self._column_transformer = ColumnTransformer(transformers,
+                                                     remainder=remainder,
+                                                     sparse_threshold=sparse_threshold,
+                                                     n_jobs=n_jobs,
+                                                     transformer_weights=transformer_weights,
+                                                     verbose=verbose,
+                                                     verbose_feature_names_out=verbose_feature_names_out,
+                                                     force_int_remainder_cols=force_int_remainder_cols,
+                                                     )
+
+    def get_feature_names_out(self, input_features=None):
+        feature_names = super().get_feature_names_out(input_features=input_features)
+
+        def get_first_split_string(s):
+            parts = s.split('__', 1)  # 使用'__'分割字符串，并限制分割次数为1
+            return parts[1] if len(parts) > 1 else s  # 如果有分割的结果，返回第一部分，否则返回空字符串
+
+        feature_names = [get_first_split_string(feature_name) for feature_name in feature_names]
+
+        return feature_names
