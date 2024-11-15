@@ -89,7 +89,7 @@ class DataModeler:
         for model in self._models:
             model.fit(train_feature_data, train_target_data.ravel())
             if model in self._fine_tune:
-                self._best_params_model.append(model)
+                self._best_params_model.append(model.best_estimator_)
                 self._best_model_params.append(model.best_params_)
             else:
                 self._best_params_model.append(model)
@@ -179,8 +179,10 @@ class DataModeler:
             os.makedirs(dir_path)
         # 保存最佳模型
         for best_model in self._best_model:
+            model_path = f'{dir_path}/{best_model}.pkl'
             # 模型保存
-            joblib.dump(best_model, f'{dir_path}/{best_model}.pkl')
+            joblib.dump(best_model, model_path)
+            print(f'模型保存路径{model_path}')
 
     def predict(self, data: DataFrame):
         drop_columns = list({self._target_field} & set(data.columns))
@@ -208,6 +210,6 @@ class DataModeler:
         prediction_data = pd.DataFrame(data=prediction_data.values, columns=[self._target_field])
         result = pd.concat([prediction_data, raw_data], axis=1)
         result.to_csv(self._save_predict_path, index=False)
-        print('保存路径：\n', self._save_predict_path)
+        print_with_sep_line('预测结果保存路径：\n', self._save_predict_path)
         print('保存记录数（含标题行）：\n', len(result))
         logger.info('预测值保存完成!!!!!!!!!!!!!!!!')

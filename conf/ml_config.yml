@@ -31,11 +31,12 @@ data_source:
 #   类别字段配置. 可分为：数值型类别字段（例如：1、0）、文本型类别字段（例如：男性、女性）.
 # class_text_fields:
 #   文本型类别字段. 无需配置.
-# class_value_fields:
-#   数值型类别字段. 无需配置 class_value_fields = class_fields - class_text_fields.
+# format:
+#     %Y-%m-%d %H:%M:%S
 # ===================================================================================================================
 global:
   target_field: median_house_value
+  date_field: date
   class_fields: [ ]
   class_text_fields: [ ]
 
@@ -61,16 +62,16 @@ data_explorer:
   field_unique_ratio: 0.0001
   field_unique_num: 10
 
-  show_hist_qq: false
+  show_hist_qq: true
   hist_qq_plot_fields: [ ]
 
-  show_box: false
+  show_box: true
   box_plot_fields: [ ]
 
-  show_relation: false
+  show_relation: true
   relation_threshold: 0.5
 
-  show_compare: false
+  show_compare: true
 
   duplicate_fields: [ ]
 
@@ -266,15 +267,17 @@ data_processor:
 #        模型名称，支持SVC等各种回归、分类模型.
 #             线性回归: sklearn.linear_model.LinearRegression
 #           K-近邻回归: sklearn.neighbors.KNeighborsRegressor
-#                        参数：n_neighbors=3.
+#                         param_grid: {n_neighbors: 3}
 #        支持向量机回归: sklearn.svm.SVR
 #           决策树回归: sklearn.tree.DecisionTreeRegressor
 #         随机森林回归: sklearn.ensemble.RandomForestRegressor
+#                         param_grid: {n_estimators: [100,300,500], max_depth: [1,5,10,20]}
 #        LightGBM回归: lightgbm.LGBMRegressor
+#                   : sklearn.ensemble.BaggingRegressor
 #   param_grid:
 #        配置模型参数，每个参数可配置多个值.
 # fine_tune:
-#     模型调优方法，支持：GridSearchCV（网格搜索）、RandomizedSearchCV（随机搜索）
+#     模型调优方法，支持：GridSearchCV（网格搜索）
 # assessments:
 #     评估方法配置.支持sklearn.metrics中评估指标.
 #     name:
@@ -310,10 +313,12 @@ data_modeler:
 #    - estimator: sklearn.ensemble.RandomForestRegressor
 #    - estimator: lightgbm.LGBMRegressor
   #    - estimator: RandomForestClassifier
-  fine_tune: RandomizedSearchCV
+  fine_tune: GridSearchCV
   assessments:
     - name: mean_squared_error
       min_max: min
+    - name: r2_score
+      min_max: max
   #    - name: accuracy_score
   #      min_max: max
   #      params:

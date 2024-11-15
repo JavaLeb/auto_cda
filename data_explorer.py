@@ -3,7 +3,7 @@ import pandas as pd
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tools import logger, is_empty,is_not_empty
+from tools import logger, is_empty, is_not_empty
 from data_configuration import Configuration
 import numpy as np
 from pandas.io.formats.info import DataFrameInfo
@@ -14,6 +14,7 @@ from statsmodels.stats.anova import anova_lm
 from sklearn.preprocessing import OrdinalEncoder
 from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
 import statsmodels.api as sm
+from datetime import datetime
 
 # 配置.
 # 字段唯一值占比.
@@ -31,7 +32,10 @@ class DataExplorer:
         self._conf = conf.conf
         self._data = data  # 数据初始化.
         self._data_explorer_conf = conf.data_explorer_conf
-
+        # 获取日期字段:
+        self._date_field = self._conf.get('global').get('date_field')
+        if is_not_empty(self._date_field) and self._date_field in data.columns:
+            data[self._date_field] = pd.to_datetime(data[self._date_field])
         # 获取配置：探索前几行，未配置或配置错误，默认为10.
         self._head_num_conf = self._data_explorer_conf.get('head_num')
         if not is_int(self._head_num_conf, 0):
@@ -308,7 +312,7 @@ class DataExplorer:
             value_ratio = self._data[field].value_counts(normalize=True, dropna=False)
             count_ratio = pd.concat([value_count, value_ratio], axis=1)
             count_ratio = count_ratio.reset_index(drop=False)
-            count_ratio.columns = ['class', 'count-NA-included', 'proportion-NA-included']
+            count_ratio.columns = ['class', 'count', 'proportion']
             self._class_field_info.append(count_ratio)
         self._data_info['class-fields-count'] = [len(class_fields)]
 
@@ -535,7 +539,7 @@ class DataExplorer:
                         self._class_value_field_list.append(col)
                     except ValueError:
                         self._class_text_field_list.append(col)
-            elif dtype.startswith('float') or dtype.startswith('int'):
+            elif dtype.startswith('float') or dtype.startswith('int') :
                 self._field_type_list.append('VALUE')
                 self._value_field_list.append(col)
             elif dtype.startswith('object'):
@@ -546,6 +550,11 @@ class DataExplorer:
                 except ValueError:
                     self._field_type_list.append('OBJECT')
                     self._object_field_list.append(col)
+            elif dtype.startswith('datetime'):
+                numeric = pd.to_numeric(self._data[col], errors='raise')
+                self._data[col] = numeric
+                self._field_type_list.append('VALUE')
+                self._value_field_list.append(col)
             else:
                 raise Exception(f'无法确认数据类型[{dtype}]的字段[{col}]的类别')
 
@@ -637,9 +646,9 @@ class DataExplorer:
         # 筛选出大于阈值的数据
         cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
         cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
-        print_with_sep_line(f'数值型字段相关性矩阵：\n{corr_matrix.to_markdown()}')
+        print_with_sep_line(f'数值型字段线性相关性矩阵：\n{corr_matrix.to_markdown()}')
         # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
-        print_with_sep_line(f'数值型字段|相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
+        print_with_sep_line(f'数值型字段|线性相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
 
         # 多重共线性. 需要移除目标字段，添加常数字段.
         fields = [field for field in self._value_field_list if field != self._target_field]
@@ -647,7 +656,8 @@ class DataExplorer:
         copy_data = copy_data.dropna()
         copy_data = sm.add_constant(copy_data)  # 会添加在最前面
         vif_value = [vif(copy_data, i) for i in range(1, len(copy_data.columns))]
-        self._value_field_info['vif-value'] = pd.DataFrame(data=vif_value, index=fields)
+        vif_value_df = pd.DataFrame(data=vif_value, index=fields, columns=['vif-value'])
+        self._value_field_info['vif-value'] = vif_value_df['vif-value']
 
         # # 两个变量之间的散点图.
         # pd.plotting.scatter_matrix(data, figsize=(20, 10))

@@ -9,40 +9,41 @@ from data_configuration import Configuration
 def auto_pm25():
     conf = Configuration(conf_path=r'../conf/pm25_ml_config.yml')
 
-    # 数据读取
+    # 1.数据读取.
     data_reader = DataReader(ds_type='file', conf=conf)
-    data = data_reader.read()
+    train_data = data_reader.read_train()
+    test_data = data_reader.read_test()
 
-    # 数据探索.
-    data_explorer = DataExplorer(data, conf=conf)
-    data_explorer.explore()
+    # 2.数据探索.
+    # 训练数据探索.
+    train_data_explorer = DataExplorer(train_data, conf=conf)
+    train_data_explorer.explore()
+    # 测试数据探索.
+    test_data_explorer = DataExplorer(test_data, conf=conf, is_train_data=False)
+    test_data_explorer.explore()
 
-    # 数据处理.
-    data_processor = DataProcessor(conf=conf)
-    data = data_processor.process(data)
+    # 训练数据、测试数据比较.
+    # train_data_explorer.compare(test_data_explore)
 
-    # 数据探索.
-    data_explorer = DataExplorer(data, conf=conf)
-    data_explorer.explore()
+    # 3.数据处理.
+    data_processor = DataProcessor(base_data_explorer=train_data_explorer, conf=conf)
+    processed_train_data = data_processor.process(train_data)
+    processed_test_data = data_processor.process(test_data)
 
+    # 对处理过的数据进一步探索.
+    processed_train_data_explore = DataExplorer(processed_train_data, conf=conf)
+    processed_train_data_explore.explore()
+
+    # 数据切分.
     data_splitter = DataSplitter(conf=conf)
-    train_data_list, valid_data_list = data_splitter.split(data)
-    train_data, valid_data = train_data_list[0], valid_data_list[0]
+    train_data_list, valid_data_list = data_splitter.split(processed_train_data)
+    train_data = train_data_list[0]
+    valid_data = valid_data_list[0]
 
-    # 数据建模.
+    # 数据模型.
     data_modeler = DataModeler(conf=conf)
     data_modeler.model(train_data, valid_data)
-
-    # 读取测试数据.
-    test_data = data_reader.read(train=False)
-    # 探索测试数据.
-    data_explorer = DataExplorer(test_data, conf=conf)
-    data_explorer.explore()
-
-    test_processed_data = data_processor.process(test_data)
-
-    # 模型预测并保存预测结果.
-    data_modeler.save_predict(test_data, test_processed_data)
+    data_modeler.save_predict(test_data, processed_test_data)
 
 
 if __name__ == '__main__':

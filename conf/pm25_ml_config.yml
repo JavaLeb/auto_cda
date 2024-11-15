@@ -1,6 +1,6 @@
-# ================================================================================================
+# ===================================================================================================================
 # 数据源配置.
-# ================================================================================================
+# ===================================================================================================================
 data_source:
   type: file #数据源类型
   format: txt # 文件的格式（支持excel、txt、csv）
@@ -9,7 +9,24 @@ data_source:
   test_path: ../data/pm25/pm25_test.csv
   header: 0 # 标题行.
 
-# ================================================================================================
+# ===================================================================================================================
+# 全局变量配置.
+# target_field:
+#   目标字段，或称为标签、输出字段等.
+# class_fields:
+#   类别字段配置. 可分为：数值型类别字段（例如：1、0）、文本型类别字段（例如：男性、女性）.
+# class_text_fields:
+#   文本型类别字段. 无需配置.
+# class_value_fields:
+#   数值型类别字段. 无需配置 class_value_fields = class_fields - class_text_fields.
+# ===================================================================================================================
+global:
+  target_field: pm2.5
+  date_field: date
+  class_fields: [ ]
+  class_text_fields: [ ]
+
+# ===================================================================================================================
 # 数据探索配置.
 #   head_num:
 #       打印数据的前多少行.
@@ -19,20 +36,33 @@ data_source:
 #       字段唯一值个数，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
 #   explore_hist:
 #       是否探索数据的直方图分布，取值true和false.
+#   hist_plot_fields:
+#       探索直方图的字段，未配置默认全部字段.
 #   explore_relation
-#       是否数据的相关性，取值true和false.
-# ================================================================================================
+#       是否探索数据的相关性，数值型字段为两两相关性，取值true和false.
+# ===================================================================================================================
 data_explorer:
+
   head_num: 10
-  field_unique_ratio: 0.001
-  field_unique_num: 100
-  explore_hist: false
-  hist_plot_fields: [ ]
-  explore_relation: false
-  relation_fields: [ ]
+
+  field_unique_ratio: 0.0001
+  field_unique_num: 10
+
+  show_hist_qq: false
+  hist_qq_plot_fields: [ ]
+
+  show_box: false
+  box_plot_fields: [ ]
+
+  show_relation: false
+  relation_threshold: 0.5
+
+  show_compare: false
+
+  duplicate_fields: [ ]
 
 
-# ================================================================================================
+# ===================================================================================================================
 # 数据切分器配置
 # splitter:
 #   配置数据切分器，目前支持simple、KFold、LeaveOneOut、LeavePOut.
@@ -48,7 +78,7 @@ data_explorer:
 #   KFold: 可配置参数：n_splits=5, shuffle=False.
 #   StratifiedKFold：可配置参数：n_splits=5, shuffle=False.
 #   LeavePOut：可配置参数：p=1.
-# ================================================================================================
+# ===================================================================================================================
 data_splitter:
   splitter: simple
   params:
@@ -57,60 +87,148 @@ data_splitter:
     random_state: 42
 
 
-# ================================================================================================
+# ===================================================================================================================
 # 数据处理器配置
-# ================================================================================================
+# ===================================================================================================================
 data_processor:
-  # ------------------------------------------------------------------
+  # ---------------------------------------------------------------------------------------------------------------
   # 字段选择器配置：
   #   对字段进行选择，例如：删除一些不需要的字段.
+  #   字段选择的方法：
+  #     1、方差阈值化：
+  #           （1）如果特征字段是数值型，可计算该字段的方差，如果方差很小，低于设定的阈值，表示该字段重要性很低，可删除.
+  #           （2）如果特征字段是二元类别，方差计算var(x)=p(1-p).
+  #           注意：不可事先做中心化、标准化等.
+  #     2、利用统计检验，目标字段是类别型（分类问题）：
+  #           （1）输入字段是数值型：卡方检验.
+  #           （2）输入字段是类别型：ANOVA检验和T检验.
+  #     3、相关性系数，目标字段和非目标字段都是数值型.
+  #     4、模型的方式：使用决策树、随机森林、XGBoost以及逻辑回归中的逐步回归.
   # fields:
   #   配置需要删除的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
-  # ------------------------------------------------------------------
+  # ---------------------------------------------------------------------------------------------------------------
   field_selection:
-    fields: [ ]
-
-  # ------------------------------------------------------------------
-  # 字段清洗器配置：
-  #   对字段进行清洗，例如：对字段缺失值进行填充.
-  # fields:
-  #   配置需要删除的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
-  # ------------------------------------------------------------------
+    drop_fields: [ V5, V9, V11, V17, V22, V28 ]
+    variance_threshold_selection:
+      - fields: [  ]
+        threshold: 1000000
+      - fields: [ ]
+        threshold:
+  # ---------------------------------------------------------------------------------------------------------------
+  # 字段清洗器配置. 例如：对字段缺失值进行填充.
+  #   na_cleaner:
+  #     对字段缺失值清洗配置. 一般缺失值处理有如下方法：
+  #       1、缺失值比例 < 20% :
+  #           对字段值进行填补：
+  #             类别型字段：（1）使用常数、众数填充，
+  #                       （2）使用KNN、随机森林、XGBoost分类模型填充；
+  #             数值型字段：（1）使用常数、平均值、中位数填充，
+  #                       （2）使用KNN、随机森林、XGBoost回归模型填充；
+  #       2、缺失值比例  20%~80% :
+  #           对字段值进行填补，填补方法同上，同时新增指示变量，非缺失值标记为1，缺失值标记为0.
+  #       3、缺失值比例  >80% :
+  #           删除缺失字段，同时新增指示变量，非缺失值标记为1，缺失值标记为0.
+  #       4、直接删除字段缺失值记录：
+  #            （1）一般总数据量很大，该字段缺失值只占一小部分时，可直接删除，此种方法使用较少；
+  #       代码实现时暂不支持第3条.
+  #     fields:
+  #       配置需要缺失值清洗的字段名称，多个字段使用英文逗号","分隔，例如：fields: [f1,f2,f3].
+  #     clean_method:
+  #       配置具体的清洗方法.
+  #         drop: 直接删除缺失值字段；
+  #         drop_na: 直接删除缺失值记录；
+  #         simple_fill: 缺失值简单填补；
+  #         knn_fill: 最近邻填充，支持数值型字段.
+  #         rfc_fill: 随机森林分类填充，支持类别型字段.
+  #         rfr_fill: 随机森林回归填充，支持数值型字段.
+  #     fill_params:
+  #       配置填补的参数，
+  #      （1）当 clean_method = simple_fill时. 可配置参数：{ strategy: ,fill_value:, add_indicator: }, sklearn.impute.SimpleImputer.
+  #           strategy:
+  #             constant: 常数填补.
+  #             mean: 均值填补.
+  #             median: 中位数填补.
+  #             most_frequent: 众数填补.
+  #           fill_value: 填充的常数值，当 strategy = constant 时生效.
+  #           add_indicate:
+  #               是否新增指示变量，配置取值true or false；指示变量的取值策略：缺失值为1，非缺失值为0.
+  #      （2）当clean_method = knn_fill时，可配置参数参见sklearn.impute.KNNImputer.
+  # ---------------------------------------------------------------------------------------------------------------
   field_cleaner:
-    # 缺失值清洗.
+    outlier_cleaners:
+      - fields: [ ]
+        encoder:
+        detector: 3sigma   # 支持3sigma、IQR
+        clean_method:   # 同 na_cleaners: clean_method.
+      - fields: [ ]
+        encoder:
+        detector: 3sigma   # 支持3sigma、IQR
+        clean_method:   # 同 na_cleaners: clean_method.
     na_cleaners:
-      - fields: [ ] # 待清洗的字段名称列表.
-        clean_method: drop_na  # 对缺失值处理. drop、drop_na、fill。drop: 删除列。drop_na: 删除缺失值的行，fill：填充缺失值.
-        fill_method: median  # 常数值（const）、均值（mean）、中位数（median）、众数（mode）
-        fill_value:  # 填充的值，当method=const时生效.
+      - fields: [  ]
+        clean_method: rfr_fill
+      - fields: [  ]
+        clean_method: rfr_fill
+#        fill_params: { strategy: mean,
+#                       fill_value:,
+#                       add_indicator: true}
 
-  # ------------------------------------------------------------------
-  # 字段转换器配置：
-  #   对字段进行转换，例如：对字段的所有值进行标准化. 转换器执行时按照配置的顺序执行.
-  #   转换器可以增加字段数，字段命名为：原字段名称_序号.
+  # ---------------------------------------------------------------------------------------------------------------
+  # 字段转换器配置.
+  #   对字段进行转换， 一个字段如果配置了多个转换器，按照配置顺序执行.
+  #   转换器可以将一个字段变为多个字段，例如独特编码，新字段命名方式为：原字段名称_序号.
+  #   如果一个字段通过某个转换器变成多个字段，后续的转换器将作用于多个字段.
+  #   转换仅支持字段的值依赖当前的列.
+  #   特征的转换方法：
+  #     1、线性特征转换：
+  #         （1）与目标字段无关的转换：PCA、SVD、TSVD、矩阵分解NMF，
+  #         （2）与目标字段相关的转换：LDA.
+  #     2、非线性特征转换：
+  #         （1）与目标字段无关的转换：Kenerl PCA、t-SNE
+  #         （2）与目标字段有关的转换：神经网络.
   # fields:
   #   配置需要进行转换的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
   # transformers:
-  #   配置转换器
+  #   配置转换器. 数据转换器有如下种类：
+  #     1、编码转换器：对字段进行编码。通常对非数值的类别型字段编码，支持：
+  #         OneHotEncoder:  独特编码，主要用于无序的类别型字段；
+  #         OrdinalEncoder: 有序编码，主要用于有序的类别字段编码；
+  #     2、标准化转换器：对字段数值进行标准化，支持：
+  #         MinMaxScaler：最大最小标准化
+  #         StandardScaler：标准化.
+  #     4、其他系统内置转换器：系统内置的转换器均可，例如：
+  #         TfidfVectorizer：文本词频-逆文档频率.
+  #     4、自定义转换器：需实现fit()、transform()
   #   name: 配置转换器名称，支持如下转换器：
-  #       MinMaxScaler：最大最小标准化
-  #       StandardScaler：标准化.
-  #       TfidfVectorizer：文本词频-逆文档频率.
-  #       自定义转换器：需实现fit()、transform()
-  #   params: 配置转换器参数.
-  # ------------------------------------------------------------------
+  #   params: 配置转换器的参数，格式: {param1: value1,param2: value2}.
+  # ---------------------------------------------------------------------------------------------------------------
   field_transformer:
-    - fields: [ date ]
-      transformers:
-        - name: DateTransformer
+    steps:
+      - step_name: date_transformer
+        column_transformer:
+          transformers:
+            - transformer_name: date_transformer
+              transformer:
+                instance: DateTransformer
+              fields: [ date ]
           params:
-        - name: StandardScaler
-    - fields: [ hour,DEWP,TEMP,PRES,Iws,Is,Ir,cbwd_NE,cbwd_NW,cbwd_SE,cbwd_cv ]
-      transformers:
-        - name: StandardScaler
-#          params: {with_mean: False}
 
-# ================================================================================================
+      - step_name: min_max_scaler
+        transformer:
+          instance: MinMaxScaler
+          params:
+
+#      - step_name: box_cox
+#        transformer:
+#          instance: BoxCoxTransformer
+#          params:
+
+#      - step_name: pca
+#        transformer:
+#          instance: PCA
+#          params: { n_components: 0.9 }
+
+# ===================================================================================================================
 # 数据模型配置. 最佳模型：对于不同模型、不同参数，将根据评估指标选择对应的最佳模型.
 #
 # target_fields：
@@ -118,53 +236,80 @@ data_processor:
 # models:
 #     配置数据模型，可配置多个数据模型.
 #   estimator:
-#        模型名称，支持各种回归、分类模型.
-#             LinearRegression： 线性回归.
-#             LinearSVR: 线性支持向量机回归.
+#        模型名称，支持SVC等各种回归、分类模型.
+#             线性回归: sklearn.linear_model.LinearRegression
+#           K-近邻回归: sklearn.neighbors.KNeighborsRegressor
+#                        参数：n_neighbors=3.
+#        支持向量机回归: sklearn.svm.SVR
+#           决策树回归: sklearn.tree.DecisionTreeRegressor
+#         随机森林回归: sklearn.ensemble.RandomForestRegressor
+#        LightGBM回归: lightgbm.LGBMRegressor
 #   param_grid:
 #        配置模型参数，每个参数可配置多个值.
 # fine_tune:
-#     模型调优方法，支持：GridSearchCV（网格搜索）、RandomizedSearchCV（随机搜索）
-#             使用GridSearchCV时，模型可如下配置：
-#                 - estimator: SVR
-#                   param_grid:
-#                     kernel: ['poly']
+#     模型调优方法，支持：GridSearchCV（网格搜索）
 # assessments:
 #     评估方法配置.支持sklearn.metrics中评估指标.
 #     name:
 #       评估方法名称.支持如下：
-#         回归指标.
-#           mean_squared_error
-#           root_mean_squared_error
+#         回归指标:
+#            平均绝对值误差: sklearn.metrics.mean_absolute_error
+#                 均方误差: sklearn.metrics.mean_squared_error
+#               均方根误差: sklearn.metrics.root_mean_squared_error
+#                 R平方值: sklearn.metrics.r2_score
 #         分类指标：
-#           accuracy_score
-#           precision_score
-#           recall_score
-#           f1_score
-#           roc_auc_score
-#           classification_report
-#           confusion_matrix
+#                  准确率: sklearn.metrics.accuracy_score
+#                  精准度: sklearn.metrics.precision_score
+#                  召回率: sklearn.metrics.recall_score
+#                  f1得分: sklearn.metrics.f1_score
+#                 AUC得分: sklearn.metrics.roc_auc_score
+#                 分类报告: sklearn.metrics.classification_report
+#                 混淆矩阵: sklearn.metrics.confusion_matrix
 #     min_max:
 #       评估准则，根据评估指标的最大值还是最小值来判断最佳.
 #     params:
 #       评估方法的参数.
-# ================================================================================================
+# ===================================================================================================================
 data_modeler:
-  target_fields: [ pm2.5 ]
   target_encoder:
     name:
+  #    name: LabelEncoder
   models:
-    - estimator: LinearRegression
-      param_grid: [ ]
-    - estimator: LinearSVR
-    - estimator: SVR
-      param_grid:
-        kernel: ['poly']
+#    - estimator: sklearn.linear_model.LinearRegression
+#      param_grid: [ ]
+#    - estimator: sklearn.neighbors.KNeighborsRegressor
+#    - estimator: sklearn.svm.SVR
+#    - estimator: sklearn.tree.DecisionTreeRegressor
+    - estimator: sklearn.ensemble.RandomForestRegressor
+    - estimator: sklearn.ensemble.RandomForestRegressor
+      param_grid: {n_estimators: [100,300,500], max_depth: [1,5,10,20]}
+    - estimator: lightgbm.LGBMRegressor
+    - estimator: sklearn.ensemble.BaggingRegressor
+#    - estimator: sklearn.ensemble.BaggingRegressor
+#      param_grid: {n_estimators: [100,300,500], max_depth: [1,5,10,20]}
   fine_tune: GridSearchCV
   assessments:
     - name: root_mean_squared_error
       min_max: min
-      params:
+    - name: r2_score
+      min_max: max
+  #    - name: accuracy_score
+  #      min_max: max
+  #      params:
+  #    - name: precision_score
+  #      min_max: max
+  #      params: { average: micro }
+  #    - name: f1_score
+  #      min_max: max
+  #      params: { average: micro }
+  #    - name: recall_score
+  #      min_max: max
+  #      params: { average: micro }
+  #    - name: classification_report
+  #      min_max: max
+  #      params:
+  #    - name: roc_auc_score
+  #      min_max: max
+  #      params: { multi_class: ovo }
   save_predict:
-    path: result/predict_result.csv
-    target_name: [ pm2.5 ]
+    path: result/%Y-%m-%d_%H-%M-%S/predict_result.csv

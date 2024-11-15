@@ -385,7 +385,6 @@ class DataProcessor:
         # 定义流水线.
         pipeline = Pipeline(steps=step_instance_list)
         transformed_data = pipeline.fit_transform(X=feature_copy_data)
-        out_name = pipeline.get_feature_names_out()
         transformed_data = pd.DataFrame(data=transformed_data, columns=pipeline.get_feature_names_out())
         # 连接目标字段.
         if target_data is not None:
@@ -546,6 +545,9 @@ class DateTransformer(BaseEstimator, TransformerMixin):
 
         return pd.DataFrame(data=df)
 
+    def get_feature_names_out(self, input_features=None):
+        return ['date__' + str(i) for i in range(self.n_features_in_)]
+
 
 class BoxCoxTransformer(BaseEstimator, TransformerMixin):
     """
@@ -572,7 +574,7 @@ class BoxCoxTransformer(BaseEstimator, TransformerMixin):
         return X
 
     def get_feature_names_out(self, input_features=None):
-        return ['box_cox_' + str(i) for i in range(self.n_features_in_)]
+        return ['box_cox__' + str(i) for i in range(self.n_features_in_)]
 
 
 class RFNColumnTransformer(ColumnTransformer):

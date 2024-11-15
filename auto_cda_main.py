@@ -29,7 +29,7 @@ if __name__ == '__main__':
     data_processor = DataProcessor(base_data_explorer=train_data_explorer, conf=conf)
     processed_train_data = data_processor.process(train_data)
     processed_test_data = data_processor.process(test_data)
-    na = processed_train_data.isna().any().loc[lambda x: x].index.tolist()
+
     # 对处理过的数据进一步探索.
     processed_train_data_explore = DataExplorer(processed_train_data, conf=conf)
     processed_train_data_explore.explore()
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     train_data = train_data_list[0]
     valid_data = valid_data_list[0]
 
-    # 模型处理.
+    # 数据模型.
     data_modeler = DataModeler(conf=conf)
     data_modeler.model(train_data, valid_data)
     data_modeler.save_predict(test_data,processed_test_data)
