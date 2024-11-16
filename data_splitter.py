@@ -1,9 +1,8 @@
 import numpy as np
-from sklearn.model_selection import KFold, train_test_split, LeavePOut, LeaveOneOut
 
 from data_configuration import Configuration
 from pandas import DataFrame
-from tools import print_with_sep_line, instantiate_class, logger
+from tools import print_with_sep_line, instantiate_class, logger, is_empty, is_not_empty
 import pandas as pd
 from operator import methodcaller
 from sklearn import model_selection
@@ -22,23 +21,21 @@ class DataSplitter:
         self._valid_data_list = []
         self._summary = DataFrame()
         self._summary['splitter'] = [self._split_type]
-        self._data = None
         self._params = data_splitter_conf.get('params')
+        if is_empty(self._params):
+            self._params = {}
         for param_name, param_value in self._params.items():
-            if param_name and param_value:
+            if param_name is not None and param_value is not None:
                 self._summary[param_name] = param_value
             else:
                 raise Exception(f"未配置参数名{param_name}或参数值{param_value}")
 
     def split(self, data: DataFrame = None):
         logger.info('开始数据切分....................')
-        self._data = data.values
         self._summary['total_count'] = len(data)
         if self._split_type == SIMPLE:
-            split_method = methodcaller('train_test_split', self._data, **self._params)
+            split_method = methodcaller('train_test_split', data, **self._params)
             train_data, valid_data = split_method(model_selection)
-            train_data = pd.DataFrame(data=train_data, columns=data.columns)
-            valid_data = pd.DataFrame(data=valid_data, columns=data.columns)
             self._train_data_list.append(train_data)
             self._valid_data_list.append(valid_data)
             self._summary['train_count'] = len(train_data)
@@ -47,10 +44,8 @@ class DataSplitter:
             cls = instantiate_class('sklearn.model_selection.' + self._split_type, **self._params)
             train_count = []
             valid_count = []
-            for train_index, valid_index in cls.split(self._data):
-                train_data, valid_data = self._data[train_index], self._data[valid_index]
-                train_data = pd.DataFrame(data=train_data, columns=data.columns)
-                valid_data = pd.DataFrame(data=valid_data, columns=data.columns)
+            for train_index, valid_index in cls.split(data):
+                train_data, valid_data = data.loc[train_index], data.loc[valid_index]
                 self._train_data_list.append(train_data)
                 self._valid_data_list.append(valid_data)
                 train_count.append(len(train_data))
