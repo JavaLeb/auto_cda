@@ -1,4 +1,4 @@
-from data_reader import DataReader
+from data_reader import DataIntegration
 from data_explorer import DataExplorer
 from data_splitter import DataSplitter
 from data_processor import DataProcessor
@@ -10,7 +10,7 @@ if __name__ == '__main__':
     conf = Configuration(conf_path=r'conf/ml_config.yml')
 
     # 1.数据读取.
-    data_reader = DataReader(ds_type='file', conf=conf)
+    data_reader = DataIntegration(ds_type='file', conf=conf)
     train_data = data_reader.read_train()
     test_data = data_reader.read_test()
 

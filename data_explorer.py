@@ -1,9 +1,10 @@
-from tools import print_with_sep_line, is_int, is_float
-import pandas as pd
+import os.path
+import shutil
+
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tools import logger, is_empty, is_not_empty
+from tools import *
 from data_configuration import Configuration
 import numpy as np
 from pandas.io.formats.info import DataFrameInfo
@@ -14,7 +15,6 @@ from statsmodels.stats.anova import anova_lm
 from sklearn.preprocessing import OrdinalEncoder
 from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
 import statsmodels.api as sm
-from datetime import datetime
 
 # 配置.
 # 字段唯一值占比.
@@ -24,18 +24,34 @@ SHOW_HIST_QQ = 'show_hist_qq'
 SHOW_BOX = 'show_box'
 SHOW_QQ = 'show_qq'
 SHOW_RELATION = 'show_relation'
-DUPLICATE_FIELDS = 'duplicate_fields'
 
 
 class DataExplorer:
-    def __init__(self, data: DataFrame, conf: Configuration, is_train_data: bool = True) -> None:
+    def __init__(self, conf: Configuration, data: DataFrame, duplicate_fields: list = None,
+                 include_col: list = None,
+                 exclude_col: list = None,
+                 is_train_data: bool = True) -> None:
+        """
+
+        :param conf:
+        :param data:
+        :param duplicate_fields:
+        :param include_col: 探索的字段.
+        :param exclude_col: 排除字段.
+        :param is_train_data:
+        """
         self._conf = conf.conf
-        self._data = data  # 数据初始化.
+        if include_col:
+            self._data = data[include_col]
+        else:
+            self._data = data
+        if exclude_col:
+            self._data = self._data.drop(columns=exclude_col)
         self._data_explorer_conf = conf.data_explorer_conf
         # 获取日期字段:
         self._date_field = self._conf.get('global').get('date_field')
-        if is_not_empty(self._date_field) and self._date_field in data.columns:
-            data[self._date_field] = pd.to_datetime(data[self._date_field])
+        if is_not_empty(self._date_field) and self._date_field in self._data.columns:
+            self._data[self._date_field] = pd.to_datetime(self._data[self._date_field])
         # 获取配置：探索前几行，未配置或配置错误，默认为10.
         self._head_num_conf = self._data_explorer_conf.get('head_num')
         if not is_int(self._head_num_conf, 0):
@@ -52,15 +68,10 @@ class DataExplorer:
             self._field_unique_ratio = 0.001
 
         # 获取配置：重复字段.
-        self._duplicate_fields = self._data_explorer_conf.get(DUPLICATE_FIELDS)
-        if not isinstance(self._duplicate_fields, list):  # 配置错误.
-            raise Exception(f'conf {DUPLICATE_FIELDS} error, only support a list')
-        if len(self._duplicate_fields) == 0:  # 未配置，默认全部字段.
-            self._duplicate_fields = data.columns.values
+        if duplicate_fields is None:
+            self._duplicate_fields = self._data.columns.values
         else:
-            self._duplicate_fields = list(data.columns & set(self._duplicate_fields))
-            if len(self._duplicate_fields) == 0:
-                raise Exception(f'conf {DUPLICATE_FIELDS} error, the conf not in data coloumns.')
+            self._duplicate_fields = duplicate_fields
 
         # 获取配置：直方图配置.
         self._show_hist_qq = self._data_explorer_conf.get(SHOW_HIST_QQ)
@@ -68,7 +79,7 @@ class DataExplorer:
         if not isinstance(self._hist_qq_plot_fields, list):
             raise Exception(f'conf hist_qq_plot_fields error, need a list. {self._hist_qq_plot_fields}')
         if len(self._hist_qq_plot_fields) > 0:
-            self._hist_qq_plot_fields = list(set(self._hist_qq_plot_fields) & set(data.columns))
+            self._hist_qq_plot_fields = list(set(self._hist_qq_plot_fields) & set(self._data.columns))
             if len(self._hist_qq_plot_fields) == 0:
                 raise Exception(
                     f'conf hist_qq_plot_fields error, need column in data columns. {self._hist_qq_plot_fields}')
@@ -79,7 +90,7 @@ class DataExplorer:
         if not isinstance(self._box_plot_fields, list):
             raise Exception(f'conf box_plot_fields error, need a list. {self._box_plot_fields}')
         if len(self._box_plot_fields) > 0:
-            self._box_plot_fields = list(set(self._box_plot_fields) & set(data.columns))
+            self._box_plot_fields = list(set(self._box_plot_fields) & set(self._data.columns))
             if len(self._box_plot_fields) == 0:
                 raise Exception(f'conf box_plot_fields error, need column in data columns. {self._box_plot_fields}')
 
@@ -89,8 +100,8 @@ class DataExplorer:
         self._target_field = self._conf.get('global').get('target_field')
         if self._target_field is None:
             raise Exception('目标字段未配置，请检查配置global->target_field')
-        elif is_train_data and self._target_field not in data.columns:
-            raise Exception(f'目标字段{self._target_field}配置错误，非数据字段，请检查配置global->target_field')
+        elif is_train_data and self._target_field not in self._data.columns:
+            logger.warn(f'目标字段{self._target_field}配置错误，非数据字段，请检查配置global->target_field')
 
         if self._relation_threshold is None:
             self._relation_threshold = 0.5
@@ -99,6 +110,11 @@ class DataExplorer:
                 self._relation_threshold = 1.0
             elif self._relation_threshold < -1:
                 self._relation_threshold = -1.0
+
+        relation_row_num = self._data_explorer_conf.get('box_row_num')
+        self._relation_row_num = is_range_default(relation_row_num, min_value=1, default_value=2)
+        relation_col_num = self._data_explorer_conf.get('box_col_num')
+        self._relation_col_num = is_range_default(relation_col_num, min_value=1, default_value=1)
 
         # 探索初始化.
         self._explore_head_flag = False  # 前几行探索标记初始化.
@@ -123,6 +139,16 @@ class DataExplorer:
         self._class_value_field_list = []
 
         self._missing_field = []
+
+        # 图像保存初始化
+        save_dir = rf'../result/data_explorer/data_shape{str(self._data.shape)}/'
+        self._relation_save_dir = save_dir + 'relation_plot/'
+        self._hist_qq_save_dir = save_dir + 'hist_qq_plot/'
+        self._box_plot_save_dir = save_dir + 'box_plot/'
+
+        self._report_save_dir = save_dir + 'report/'
+
+        self._report = []
 
         # 探索字段内置类型.
         self._explore_field_built_type()
@@ -209,25 +235,45 @@ class DataExplorer:
         # 探索关系.
         self._explore_field_relation_info(self._data)
 
+        # 保存报告
+        create_dir(self._report_save_dir, delete=True)
+        with open(self._report_save_dir + 'report.txt', 'w', encoding='utf-8') as f:
+            for report in self._report:
+                f.write(report)
+                f.write('\n')
+
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+        plt.rcParams['axes.unicode_minus'] = False
         # 直方图.
+        size = 100 * 10000
         if self._show_hist_qq:
-            if self._hist_qq_plot_fields:
-                self._hist_qq_plot(self._data[self._hist_qq_plot_fields])
+            if len(self._data) > size:
+                logger.warn(f'数据量已经超过{size / 10000}万，不绘制直方-QQ图')
             else:
-                self._hist_qq_plot(self._data[self._value_field_list])
+                if self._hist_qq_plot_fields:
+                    self._hist_qq_plot(self._data[self._hist_qq_plot_fields])
+                else:
+                    self._hist_qq_plot(self._data)
 
         # 箱型图.
         if self._show_box:
-            if self._box_plot_fields:
-                self._box_plot(self._data[self._box_plot_fields])
+            if len(self._data) > size:
+                logger.warn(f'数据量已经超过{size / 10000}万，不绘制箱型图')
             else:
-                self._box_plot(self._data)
+                if self._box_plot_fields:
+                    self._box_plot(self._data[self._box_plot_fields])
+                else:
+                    self._box_plot(self._data)
 
         # 字段关系图.
         if self._show_relation:
-            self._value_field_relation_plot(self._data[self._value_field_list])
-            self._class_field_relation_plot(data=self._data[self._class_field_list])
-            self._class_value_relation_plot(data=self._data)
+            if len(self._data) > size:
+                logger.warn(f'数据量已经超过{size / 10000}万，不绘制关系图')
+            else:
+                create_dir(self._relation_save_dir, delete=True)
+                self._value_field_relation_plot(self._data[self._value_field_list])
+                self._class_field_relation_plot(data=self._data[self._class_field_list])
+                self._class_value_relation_plot(data=self._data)
 
         logger.info('数据探索完成！！！！！！！！！！！！！！！！！！')
 
@@ -250,11 +296,15 @@ class DataExplorer:
         self._head_n_data = self._data.head(head_num)
 
         # 超过100个字段，缩略打印，否则展开打印.
-        print_with_sep_line(f'前{head_num}行数据（shape={self._data.shape}）：')
+        msg = f'前{head_num}行数据（shape={self._data.shape}）：'
+        self._report.append(msg)
+        print_with_sep_line(msg)
         if len(self._head_n_data.columns) > 100:
             print(self._head_n_data)
+            self._report.append(self._head_n_data)
         else:
             print(self._head_n_data.to_markdown())
+            self._report.append(self._head_n_data.to_markdown())
 
         self._explore_head_flag = True
 
@@ -315,11 +365,16 @@ class DataExplorer:
             count_ratio.columns = ['class', 'count', 'proportion']
             self._class_field_info.append(count_ratio)
         self._data_info['class-fields-count'] = [len(class_fields)]
-
-        print_with_sep_line(f'类别型字段摘要信息（总个数：{len(class_fields)}）：')
+        msg = f'类别型字段摘要信息（总个数：{len(class_fields)}）：'
+        print_with_sep_line(msg)
+        self._report.append(msg)
         for i in range(len(class_fields)):
-            print(f'类别型字段名称：{class_fields[i]}，唯一值个数：{len(self._class_field_info[i])}')
-            print(self._class_field_info[i].to_markdown())
+            msg = f'类别型字段名称：{class_fields[i]}，唯一值个数：{len(self._class_field_info[i])}'
+            self._report.append(msg)
+            print(msg)
+            msg = self._class_field_info[i].to_markdown()
+            print(msg)
+            self._report.append(msg)
 
         return self._data_info, self._class_field_info
 
@@ -494,7 +549,7 @@ class DataExplorer:
             fields = list(set(fields + self._class_text_field_list))
             encoder = OrdinalEncoder()
             x = encoder.fit_transform(data_copy[self._class_text_field_list])
-            data_copy[self._class_text_field_list] = pd.DataFrame(data=x.ravel())
+            data_copy[self._class_text_field_list] = x
         # 3sigma检测异常值. 只能用于数值型.
         sigma_outliers_count, sigma_outlier_first_index = \
             self.compute_sigma_outliers(data_copy[fields])
@@ -537,9 +592,9 @@ class DataExplorer:
                     try:
                         pd.to_numeric(self._data[col], errors='raise')
                         self._class_value_field_list.append(col)
-                    except ValueError:
+                    except (ValueError, TypeError):
                         self._class_text_field_list.append(col)
-            elif dtype.startswith('float') or dtype.startswith('int') :
+            elif dtype.startswith('float') or dtype.startswith('int'):
                 self._field_type_list.append('VALUE')
                 self._value_field_list.append(col)
             elif dtype.startswith('object'):
@@ -556,7 +611,9 @@ class DataExplorer:
                 self._field_type_list.append('VALUE')
                 self._value_field_list.append(col)
             else:
-                raise Exception(f'无法确认数据类型[{dtype}]的字段[{col}]的类别')
+                self._field_type_list.append('OBJECT')
+                self._object_field_list.append(col)
+                # raise Exception(f'无法确认数据类型[{dtype}]的字段[{col}]的类别')
 
     def _explore_field_relation_info(self, data: DataFrame):
         """
@@ -648,7 +705,22 @@ class DataExplorer:
         cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
         print_with_sep_line(f'数值型字段线性相关性矩阵：\n{corr_matrix.to_markdown()}')
         # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
-        print_with_sep_line(f'数值型字段|线性相关性|>={self._relation_threshold}的变量：\n', cleaned_result.to_markdown())
+        print_with_sep_line(f'数值型字段|线性相关性|>={self._relation_threshold}的变量：\n',
+                            cleaned_result.to_markdown())
+
+        # 绘制散点图.
+        # if len(cleaned_result) > 0:
+        #     plt.rcParams['font.sans-serif'] = ['SimHei']
+        #     plt.rcParams['axes.unicode_minus'] = False
+        #
+        #     for i in range(0, len(cleaned_result)):
+        #         x = cleaned_result['level_0'].iloc[i]
+        #         y = cleaned_result['level_1'].iloc[i]
+        #         plt.scatter(data[x], data[y])
+        #         plt.xlabel(x)
+        #         plt.ylabel(y)
+        #         plt.title(f'{x}-{y}散点图')
+        #         plt.show()
 
         # 多重共线性. 需要移除目标字段，添加常数字段.
         fields = [field for field in self._value_field_list if field != self._target_field]
@@ -714,30 +786,58 @@ class DataExplorer:
         :param data: 数据.
         :return:
         """
-        row_num, col_num = 4, 6  # 一个图的子图数量：行数和列数.
+        logger.info('开始绘制直方-QQ图..........')
+        create_dir(self._hist_qq_save_dir, delete=True)
+        save_num = 1
+
+        # 一个图的子图数量：行数和列数.
+        row_num = self._data_explorer_conf.get('qq_row_num')
+        row_num = is_range_default(row_num, min_value=1, default_value=2)
+        col_num = self._data_explorer_conf.get('qq_col_num')
+        col_num = is_range_default(col_num, min_value=1, default_value=1)
         num = 0  # 列的索引号.
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+        plt.rcParams['axes.unicode_minus'] = False
+        k = num % (row_num * col_num) + 1
+        figure = None
         for col in data.columns:
-            k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
-                plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                figure = plt.figure(figsize=(20, 10))  # 初始化画布大小.
                 plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             # 绘制直方图.
             name = f'{col}(Ftype:{self._field_info.loc[col, "Ftype"]})'
+            logger.info(f'绘制列{col}的直方-QQ图')
             sns.histplot(data[col], kde=True, stat='probability')  # 绘制直方图
             plt.xlabel(name, fontsize=8)
             plt.ylabel('Probability', fontsize=8)
+            plt.title(f'{col}直方图')
 
             # 绘制QQ图.
             plt.subplot(row_num, col_num, k + 1)  # 绘制第k个图.
-            stats.probplot(data[col], plot=plt, )  # 绘制直方图
-            plt.xlabel(name, fontsize=8)
-            plt.ylabel('Ordered Values', fontsize=8)
-            plt.title(f'Probability Plot(skew={"{:.4f}".format(stats.skew(data[col]))})', fontsize=8)
-
+            if col in self._value_field_list:  # 数值字段才可以绘制.
+                stats.probplot(data[col], plot=plt, )  # 绘制直方图
+                plt.xlabel(name, fontsize=8)
+                plt.ylabel('Ordered Values', fontsize=8)
+                plt.title(f'Probability Plot(skew={"{:.4f}".format(stats.skew(data[col]))})', fontsize=8)
+                plt.title(f'{col}QQ图')
             num += 2
+            k = num % (row_num * col_num) + 1
+            if k == 1:
+                save_path = os.path.join(self._hist_qq_save_dir, f'字段数据分布直方-QQ图{save_num}')
+                figure.savefig(save_path)
+                plt.close()
+                logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
 
-        plt.show()
+                save_num += 1
+        if k != 1:
+            save_path = os.path.join(self._hist_qq_save_dir, f'字段数据分布直方-QQ图{save_num}')
+            figure.savefig(save_path)
+            plt.close()
+            logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+            save_num += 1
+        # plt.show()
+        logger.info('绘制直方-QQ图完成！！！！！！！！！！')
 
     def _hist_plot(self, data: DataFrame = None) -> None:
         """
@@ -761,21 +861,45 @@ class DataExplorer:
 
             num += 1
 
-        plt.show()
+        # plt.show()
 
     def _box_plot(self, data: DataFrame = None) -> None:
-        row_num, col_num = 4, 6  # 一个图的行数和列数.
+        logger.info('开始绘制箱型图..........')
+
+        create_dir(self._box_plot_save_dir, delete=True)
+        save_num = 1
+
+        row_num = self._data_explorer_conf.get('box_row_num')
+        row_num = is_range_default(row_num, min_value=1, default_value=2)
+        col_num = self._data_explorer_conf.get('box_col_num')
+        col_num = is_range_default(col_num, min_value=1, default_value=1)
         num = 0  # 列的索引号.
+        k = num % (row_num * col_num) + 1
+        figure = None
         for col in data.columns:
-            k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
-                plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                figure = plt.figure(figsize=(20, 10))  # 初始化画布大小.
                 plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             plt.xlabel(col + '(Ftype:' + self._field_info.loc[col, 'Ftype'] + ")")
+            logger.info(f'绘制列{col}的箱型图图')
             sns.boxplot(data[col], orient='v', width=0.5)  # 绘制直方图
+            plt.title(f'{col}箱型图')
             num += 1
-        plt.show()
+            k = num % (row_num * col_num) + 1
+            if k == 1:
+                save_path = os.path.join(self._box_plot_save_dir, f'字段数据分布箱型图{save_num}')
+                figure.savefig(save_path)
+                plt.close()
+                logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+                save_num += 1
+        if k != 1:
+            save_path = os.path.join(self._box_plot_save_dir, f'字段数据分布箱型图{save_num}')
+            figure.savefig(save_path)
+            plt.close()
+            logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+        # plt.show()
+        logger.info('箱型图绘制完成！！！！！！！！！！')
 
     def _qq_plot(self, data: DataFrame = None) -> None:
         """
@@ -799,14 +923,22 @@ class DataExplorer:
             plt.title(name, fontsize=8)
             num += 1
 
-        plt.show()
+        # plt.show()
 
     def _value_field_relation_plot(self, data: DataFrame) -> None:
-        logger.info('开始绘制字段关系图像..............')
+        logger.info('开始绘制数值字段关系图..............')
+
+        save_num = 1
+
         corr_matrix = data[self._value_field_list].corr()
         # 关系矩阵热力图.
-        sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
+        plt.figure()
+        ax = sns.heatmap(corr_matrix, annot=True, vmax=1, square=True, cmap='Blues')
         plt.title('matrix relation')
+        save_path = os.path.join(self._relation_save_dir, f'数值字段关系热力图{save_num}')
+        ax.figure.savefig(save_path)
+        logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+        save_num += 1
 
         tuple_list = []
         for i in range(len(self._value_field_list)):
@@ -820,15 +952,17 @@ class DataExplorer:
                 for j in range(i + 1, len(self._value_field_list)):
                     tuple_list.append((row, self._value_field_list[j]))
 
-        row_num, col_num = 4, 6  # 一个图的行数和列数.
+        row_num, col_num = self._relation_row_num, self._relation_col_num  # 一个图的行数和列数.
         num = 0  # 列的索引号.
+        figure = None
+        k = num % (row_num * col_num) + 1
         for (row_name, col_name) in tuple_list:
-            k = num % (row_num * col_num) + 1
             if k == 1:  # 每当k为1时，重新创建一个图.
-                plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                figure = plt.figure(figsize=(20, 10))  # 初始化画布大小.
                 plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
             plt.subplot(row_num, col_num, k)  # 绘制第k个图.
             name = f'{col_name}(Ftype:{self._field_info.loc[col_name, "Ftype"]})'
+            logger.info(f'绘制{row_name}-{col_name}的数值字段关系散点图')
             sns.regplot(x=col_name, y=row_name, data=self._data,
                         scatter_kws={'marker': '.', 's': 3, 'alpha': 0.3},
                         line_kws={'color': 'k'})  # 绘制直方图
@@ -840,15 +974,28 @@ class DataExplorer:
                 title = 'feature-relation'
             plt.title(f'{title}(rv={"{:.2f}".format(corr_matrix.loc[row_name, col_name])})', fontsize=8)
             num += 1
-
-        plt.show()
-        logger.info('绘制字段关系图像完成！！！！！！！！')
+            k = num % (row_num * col_num) + 1
+            if k == 1:
+                save_path = os.path.join(self._relation_save_dir, f'数值字段关系散点图{save_num}')
+                figure.savefig(save_path)
+                plt.close()
+                logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+                save_num += 1
+        if k != 1:
+            save_path = os.path.join(self._relation_save_dir, f'数值字段关系散点图{save_num}')
+            figure.savefig(save_path)
+            plt.close()
+            logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+        # plt.show()
+        logger.info('绘制数值字段关系图像完成！！！！！！！！')
 
     def _class_field_relation_plot(self, data: DataFrame):
-
-        row_num, col_num = 4, 6  # 一个图的行数和列数.
+        logger.info('开始绘制类别字段关系图..........')
+        save_num = 1
+        row_num, col_num = self._relation_row_num, self._relation_col_num  # 一个图的行数和列数.
         num = 0  # 列的索引号.
-
+        k = num % (row_num * col_num) + 1
+        figure = None
         for row_name in self._class_field_list:
             for col_name in self._class_field_list:
                 target = data[row_name]
@@ -858,36 +1005,66 @@ class DataExplorer:
                 df = cross_table_ratio[cross_table_ratio.columns[:-1]].iloc[:-1]
                 chi_square, p_value, _, _ = stats.chi2_contingency(cross_table)
 
-                k = num % (row_num * col_num) + 1
                 if k == 1:  # 每当k为1时，重新创建一个图.
-                    plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                    figure = plt.figure(figsize=(20, 10))  # 初始化画布大小.
                     plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
                 axes = plt.subplot(row_num, col_num, k)  # 绘制第k个图.
+                logger.info(f'绘制{row_name}-{col_name}类别字段直方图')
                 df.plot(kind='bar', stacked=True, ax=axes)
                 title = f'p={"{:.2f}".format(p_value)},chi_square={"{:.2f}".format(chi_square)}'
                 plt.ylabel(col_name)
                 plt.title(title, fontsize=8)
                 num += 1
-
-        plt.show()
+                k = num % (row_num * col_num) + 1
+                if k == 1:
+                    save_path = os.path.join(self._relation_save_dir, f'类别字段关系直方图{save_num}')
+                    figure.savefig(save_path)
+                    plt.close()
+                    logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+                    save_num += 1
+        if k != 1:
+            save_path = os.path.join(self._relation_save_dir, f'类别字段关系直方图{save_num}')
+            figure.savefig(save_path)
+            plt.close()
+            logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+            save_num += 1
+        # plt.show()
+        logger.info('类别字段关系图绘制完成..........')
 
     def _class_value_relation_plot(self, data: DataFrame):
-        row_num, col_num = 4, 6  # 一个图的行数和列数.
+        logger.info('开始绘制类别-数值字段关系图..........')
+        save_num = 1
+        row_num, col_num = self._relation_row_num, self._relation_col_num  # 一个图的行数和列数.
         num = 0  # 列的索引号.
-
+        k = num % (row_num * col_num) + 1
+        figure = None
         for x in self._class_field_list:
             for y in self._value_field_list:
-                k = num % (row_num * col_num) + 1
                 if k == 1:  # 每当k为1时，重新创建一个图.
-                    plt.figure(figsize=(20, 10))  # 初始化画布大小.
+                    figure = plt.figure(figsize=(20, 10))  # 初始化画布大小.
                     plt.subplots_adjust(hspace=0.5, wspace=0.5)  # 调整每个图之间的距离.
-                axes = plt.subplot(row_num, col_num, k)  # 绘制第k个图.
+                plt.subplot(row_num, col_num, k)  # 绘制第k个图.
                 sns.set(style="darkgrid")
+                sns.set_style(rc={'font.sans-serif': "Microsoft Yahei"})  # 解决sns坐标轴中文乱码.
                 # 利用violinplot函数绘制小提琴图
+                logger.info(f'绘制{x}-{y}类别-数值字段小提琴图')
                 sns.violinplot(x=data[x], y=data[y])
                 num += 1
-
-        plt.show()
+                k = num % (row_num * col_num) + 1
+                if k == 1:
+                    save_path = os.path.join(self._relation_save_dir, f'类别-数值字段关系小提琴图{save_num}')
+                    figure.savefig(save_path)
+                    plt.close()
+                    logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+                    save_num += 1
+        if k != 1:
+            save_path = os.path.join(self._relation_save_dir, f'类别-数值字段关系小提琴图{save_num}')
+            figure.savefig(save_path)
+            plt.close()
+            logger.info(f'保存成功！保存路径：{os.path.abspath(save_path)}')
+            save_num += 1
+        # plt.show()
+        logger.info('类别-数值字段关系图绘制完成..........')
 
     def print_summary(self) -> None:
 

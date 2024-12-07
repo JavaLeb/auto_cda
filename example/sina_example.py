@@ -1,4 +1,4 @@
-from data_reader import DataReader
+from data_reader import DataIntegration
 from data_explorer import DataExplorer
 from data_splitter import DataSplitter
 from data_processor import DataProcessor
@@ -10,7 +10,7 @@ def auto_sina():
     conf = Configuration(conf_path=r'../conf/sina_ml_config.yml')
 
     # 数据读取
-    data_reader = DataReader(ds_type='file', conf=conf)
+    data_reader = DataIntegration(ds_type='file', conf=conf)
     data = data_reader.read()
 
     # 数据探索.
@@ -18,7 +18,7 @@ def auto_sina():
     data_explorer.explore()
 
     # 数据处理.
-    data_processor = DataProcessor(conf=conf)
+    data_processor = DataProcessor(conf=conf,base_data_explorer=data_explorer)
     data = data_processor.process(data)
 
     # 数据探索.

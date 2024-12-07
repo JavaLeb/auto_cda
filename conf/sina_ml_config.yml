@@ -9,6 +9,14 @@ data_source:
   test_path: ../data/sina/sina_test_X.csv
   header: 0 # 标题行.
 
+
+global:
+  target_field: group
+  date_field:
+  class_fields: [ ]
+  class_text_fields: [ ]
+
+
 # ================================================================================================
 # 数据探索配置.
 #   head_num:
@@ -32,11 +40,28 @@ data_source:
 # ================================================================================================
 data_explorer:
   head_num: 10
-  field_unique_ratio: 0.001
-  field_unique_num: 100
-  explore_hist: true
-  explore_relation: true
 
+  field_unique_ratio: 0.0001
+  field_unique_num: 200
+
+#  show_hist_qq: true
+  hist_qq_plot_fields: [ ]
+  qq_row_num: 2
+  qq_col_num: 1
+
+#  show_box: true
+  box_plot_fields: [ ]
+  box_row_num: 2
+  box_col_num: 1
+
+#  show_relation: true
+  relation_threshold: 0.5
+  relation_row_num: 1
+  relation_col_num: 1
+
+  show_compare: true
+
+  duplicate_fields: [text]
 
 # ================================================================================================
 # 数据切分器配置
@@ -75,7 +100,11 @@ data_processor:
   # ------------------------------------------------------------------
   field_selection:
     fields: [ ]
-
+    variance_threshold_selection:
+      - fields: [  ]
+        threshold: 1000000
+      - fields: [ ]
+        threshold:
   # ------------------------------------------------------------------
   # 字段清洗器配置：
   #   对字段进行清洗，例如：对字段缺失值进行填充.
@@ -106,17 +135,16 @@ data_processor:
   #   params: 配置转换器参数.
   # ------------------------------------------------------------------
   field_transformer:
-    - fields: [ channel_title ]
-      transformers:
-        - name:
-          params:
-    - fields: [ text ]
-      transformers:
-        - name: TfidfVectorizer
-          params: { max_features: 10 }
-        - name: SparseTransformer
-        - name: StandardScaler
-#          params: {with_mean: False}
+    steps:
+      - step_name: column_transformer
+        column_transformer:
+          transformers:
+            - transformer_name: TfidfVectorizer
+              transformer:
+                instance: TfidfVectorizer
+                params: { max_features: 10 }
+              fields: [ text ]
+
 
 # ================================================================================================
 # 数据模型配置. 最佳模型：对于不同模型、不同参数，将根据评估指标选择对应的最佳模型.

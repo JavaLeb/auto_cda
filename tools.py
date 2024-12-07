@@ -4,7 +4,7 @@ import os
 import zipfile
 import glob
 import configparser
-
+import shutil
 import pandas as pd
 
 logger = logging.getLogger('auto_cda_logger')
@@ -70,6 +70,43 @@ def is_empty(input):
 
 def is_not_empty(input):
     return not is_empty(input)
+
+
+def is_range_default(current_value, min_value=None, max_value=None, default_value=None):
+    if current_value is None:
+        return False
+    if min_value and current_value < min_value:
+        return False
+    if max_value and current_value > max_value:
+        return False
+    if default_value:
+        return default_value
+
+    return True
+
+
+def create_dir(dir, delete=False):
+    if delete:
+        if os.path.exists(dir):
+            shutil.rmtree(dir)
+    os.makedirs(dir)
+
+
+def get_agg_df_new_col(agg_df):
+    """
+    获取聚合DataFrame的新列名.
+    :param agg_df: 聚合数据
+    :return:
+    """
+
+    col_list = list()
+    for col in agg_df.columns.values:
+        i = -1
+        while col[i] == '':  # 取最后一个不为空的列作为新的列名.
+            i = i - 1
+        col_list.append(col[i])
+
+    return col_list
 
 
 def package():

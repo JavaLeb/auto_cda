@@ -1,15 +1,4 @@
 # ===================================================================================================================
-# 数据源配置.
-# ===================================================================================================================
-data_source:
-  type: file #数据源类型
-  format: txt # 文件的格式（支持excel、txt、csv）
-  field_sep: ',' # 字段（属性、特征）之间的分隔符.
-  train_path: ../data/pm25/pm25_train.csv
-  test_path: ../data/pm25/pm25_test.csv
-  header: 0 # 标题行.
-
-# ===================================================================================================================
 # 全局变量配置.
 # target_field:
 #   目标字段，或称为标签、输出字段等.
@@ -17,50 +6,96 @@ data_source:
 #   类别字段配置. 可分为：数值型类别字段（例如：1、0）、文本型类别字段（例如：男性、女性）.
 # class_text_fields:
 #   文本型类别字段. 无需配置.
-# class_value_fields:
-#   数值型类别字段. 无需配置 class_value_fields = class_fields - class_text_fields.
+# format:
+#     %Y-%m-%d %H:%M:%S
 # ===================================================================================================================
 global:
-  target_field: pm2.5
-  date_field: date
+  target_field: group
+  date_field:
   class_fields: [ ]
   class_text_fields: [ ]
 
 # ===================================================================================================================
+# 数据源配置.
+#     type:
+#         数据源类型，支持file.
+#     format:
+#         文件格式，支持csv（包括txt文本），excel.
+#     field_sep:
+#         列分隔符， example: ','.
+#     train_path:
+#         训练数据路径，仅支持单个文件，多个文件使用 DataIntegration提供的read()，example: ../data/202409/training_data.csv.
+#     test_path:
+#         测试数据路径，仅支持单个文件，example: ../data/202409/test_data.csv.
+#     header:
+#         标题行，从0开始，无标题行不配置.  example: 0.
+# ===================================================================================================================
+data_source:
+  type: file
+  format: txt
+  field_sep: ','
+  train_path: ../data/202409/training_data.csv
+  test_path: ../data/202409/test_data.csv
+  header: 0
+
+# ===================================================================================================================
 # 数据探索配置.
 #   head_num:
-#       打印数据的前多少行.
+#       打印数据的前多少行，example: 10.
 #   field_unique_ratio:
-#       字段唯一值个数占总行数的比例，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
+#       字段唯一值个数占字段值总个数的比例阈值，占比不大于该阈值的字段被认定为是类别字段，example: 0.0001.
 #   field_unique_num
-#       字段唯一值个数，如果未配置class_fields，占比不大于该值的字段被认定为是类别字段.
-#   explore_hist:
-#       是否探索数据的直方图分布，取值true和false.
-#   hist_plot_fields:
-#       探索直方图的字段，未配置默认全部字段.
-#   explore_relation
-#       是否探索数据的相关性，数值型字段为两两相关性，取值true和false.
+#       字段唯一值个数阈值，字段唯一值个数不大于该阈值的字段被认定为是类别字段，example: 20.
+#   show_hist_qq:
+#       是否探索数据的直方图分布和QQ图，取值true和false，默认false， example: true.
+#   hist_qq_plot_fields:
+#       配置需要探索直方图的字段，未配置默认全部字段，example: [field1,field2].
+#   qq_row_num:
+#       一张图显示的子图行数，example: 2.
+#   qq_col_num:
+#       一张图显示的列子图个数，example: 1.
+#   show_box:
+#       是否探索箱型图，取值true和false，默认false，example: true.
+#   box_plot_fields:
+#       需要探索箱型图的字段，未配置默认全部字段，example: [field1,field2].
+#   box_row_num:
+#       一张图显示的箱型行子图的个数，example: 2.
+#   box_col_num:
+#       一张图显示的箱型列子图个数，example: 1.
+#   show_relation:
+#       是否探索字段关系，取值true和false，默认false，example: true.
+#   relation_threshold:
+#       字段相关性系数阈值，默认0.5，example: 0.6.
+#   relation_row_num:
+#       一张图显示的关系图行子图个数，example: 1.
+#   relation_col_num:
+#       一张图显示的关系图列子图的个数，example: 1.
+#   show_compare:
+#       对比探索两个数据.
 # ===================================================================================================================
 data_explorer:
 
   head_num: 10
 
   field_unique_ratio: 0.0001
-  field_unique_num: 10
-
-  show_hist_qq: false
+  field_unique_num: 200
+  
+  show_hist_qq: true
   hist_qq_plot_fields: [ ]
+  qq_row_num: 2
+  qq_col_num: 1
 
-  show_box: false
+  show_box: true
   box_plot_fields: [ ]
+  box_row_num: 2
+  box_col_num: 1
 
-  show_relation: false
+  show_relation: true
   relation_threshold: 0.5
+  relation_row_num: 1
+  relation_col_num: 1
 
-  show_compare: false
-
-  duplicate_fields: [ ]
-
+  show_compare: true
 
 # ===================================================================================================================
 # 数据切分器配置
@@ -82,8 +117,8 @@ data_explorer:
 data_splitter:
   splitter: simple
   params:
-    train_size: 26996
-    shuffle: False
+    train_size: 0.8
+    shuffle: True
     random_state: 42
 
 
@@ -108,9 +143,9 @@ data_processor:
   #   配置需要删除的字段名称，多个字段使用英文逗号","分隔，例如[f1,f2,f3].
   # ---------------------------------------------------------------------------------------------------------------
   field_selection:
-    drop_fields: [ V5, V9, V11, V17, V22, V28 ]
+    drop_fields: [ device_id ]
     variance_threshold_selection:
-      - fields: [  ]
+      - fields: [ ]
         threshold: 1000000
       - fields: [ ]
         threshold:
@@ -165,14 +200,33 @@ data_processor:
         detector: 3sigma   # 支持3sigma、IQR
         clean_method:   # 同 na_cleaners: clean_method.
     na_cleaners:
-      - fields: [  ]
-        clean_method: rfr_fill
-      - fields: [  ]
-        clean_method: rfr_fill
-#        fill_params: { strategy: mean,
-#                       fill_value:,
-#                       add_indicator: true}
-
+      - fields: [ event_id_min,event_id_mean,event_id_max,event_id_nunique,
+                  app_id_min,app_id_mean,app_id_max,app_id_nunique ]
+        clean_method: simple_fill
+        fill_params: { strategy: constant,
+                       fill_value: 0,
+                       add_indicator: false }
+      - fields: [ longitude_min,longitude_mean,longitude_max,longitude_std ]
+        clean_method: simple_fill
+        fill_params: { strategy: constant,
+                       fill_value: 0,
+                       add_indicator: false }
+      - fields: [ latitude_min,latitude_mean,latitude_max,latitude_std]
+        clean_method: simple_fill
+        fill_params: { strategy: constant,
+                       fill_value: 0,
+                       add_indicator: false }
+      - fields: [timestamp_min,timestamp_max ]
+        clean_method: simple_fill
+        fill_params: { strategy: mean,
+                       fill_value: ,
+                       add_indicator: false }
+      - fields: [ is_installed_min,is_installed_mean,is_installed_max,is_installed_sum,
+                  is_active_min,is_active_mean,is_active_max,is_active_sum ]
+        clean_method: simple_fill
+        fill_params: { strategy: constant,
+                       fill_value: 0,
+                       add_indicator: false }
   # ---------------------------------------------------------------------------------------------------------------
   # 字段转换器配置.
   #   对字段进行转换， 一个字段如果配置了多个转换器，按照配置顺序执行.
@@ -204,19 +258,34 @@ data_processor:
   # ---------------------------------------------------------------------------------------------------------------
   field_transformer:
     steps:
-      - step_name: date_transformer
+      - step_name: column_transformer
         column_transformer:
           transformers:
-            - transformer_name: date_transformer
+            - transformer_name: OneHotEncoder
               transformer:
-                instance: DateTransformer
-              fields: [ date ]
+                instance: OneHotEncoder
+              fields: [ phone_brand,device_model ]
+            - transformer_name: TfidfVectorizer
+              transformer:
+                instance: TfidfVectorizer
+              fields: [ category ]
           params:
-
-      - step_name: min_max_scaler
+      - step_name: MinMaxScaler
         transformer:
           instance: MinMaxScaler
           params:
+
+
+
+#      - step_name: pre
+#        column_transformer:
+#          transformers:
+#            - transformer_name: min_max_scaler
+#              transformer:
+#                instance: MinMaxScaler
+#              #                params: { feature_range: [0,1] }
+#              fields: [ '*' ]
+#          params:
 
 #      - step_name: box_cox
 #        transformer:
@@ -236,14 +305,31 @@ data_processor:
 # models:
 #     配置数据模型，可配置多个数据模型.
 #   estimator:
-#        模型名称，支持SVC等各种回归、分类模型.
-#             线性回归: sklearn.linear_model.LinearRegression
-#           K-近邻回归: sklearn.neighbors.KNeighborsRegressor
-#                        参数：n_neighbors=3.
-#        支持向量机回归: sklearn.svm.SVR
-#           决策树回归: sklearn.tree.DecisionTreeRegressor
-#         随机森林回归: sklearn.ensemble.RandomForestRegressor
-#        LightGBM回归: lightgbm.LGBMRegressor
+#        模型名称支持SVC等各种回归、分类模型.
+#           回归:
+#                    线性回归: sklearn.linear_model.LinearRegression
+#                  K-近邻回归: sklearn.neighbors.KNeighborsRegressor
+#                                param_grid: {n_neighbors: 3}
+#               支持向量机回归: sklearn.svm.SVR
+#                  决策树回归: sklearn.tree.DecisionTreeRegressor
+#                随机森林回归: sklearn.ensemble.RandomForestRegressor
+#                                param_grid: {n_estimators: [100,300,500], max_depth: [1,5,10,20]}
+#               LightGBM回归: lightgbm.LGBMRegressor
+#                          : sklearn.ensemble.BaggingRegressor
+#        分类:
+#               集成学习: sklearn.ensemble.RandomForestClassifier
+#                        sklearn.ensemble.BaggingClassifier
+#                        sklearn.ensemble.AdaBoostClassifier
+#                        sklearn.ensemble.VotingClassifier
+#                        sklearn.ensemble.StackingClassifier
+#                        sklearn.ensemble.GradientBoostingClassifier
+#             支持向量机:  sklearn.svm.SVC
+#                决策树:  sklearn.tree.DecisionTreeClassifier
+#                最近邻:  sklearn.neighbors.KNeighborsClassifier
+#             lightgbm:  lightgbm.LGBMClassifier
+#           随机梯度下降:  sklearn.linear_model.SGDClassifier
+#              xgboost:  xgboost.XGBClassifier
+#                        xgboost.XGBRFClassifier
 #   param_grid:
 #        配置模型参数，每个参数可配置多个值.
 # fine_tune:
@@ -272,36 +358,38 @@ data_processor:
 # ===================================================================================================================
 data_modeler:
   target_encoder:
-    name:
-  #    name: LabelEncoder
+    name: LabelEncoder
   models:
-#    - estimator: sklearn.linear_model.LinearRegression
-#      param_grid: [ ]
-#    - estimator: sklearn.neighbors.KNeighborsRegressor
-#    - estimator: sklearn.svm.SVR
-#    - estimator: sklearn.tree.DecisionTreeRegressor
-    - estimator: sklearn.ensemble.RandomForestRegressor
-    - estimator: sklearn.ensemble.RandomForestRegressor
-      param_grid: {n_estimators: [100,300,500], max_depth: [1,5,10,20]}
-    - estimator: lightgbm.LGBMRegressor
-    - estimator: sklearn.ensemble.BaggingRegressor
-#    - estimator: sklearn.ensemble.BaggingRegressor
-#      param_grid: {n_estimators: [100,300,500], max_depth: [1,5,10,20]}
+    # 分类.
+#    - estimator: sklearn.ensemble.AdaBoostClassifier
+#    - estimator: sklearn.svm.SVC
+#    - estimator: sklearn.ensemble.BaggingClassifier
+#    - estimator: xgboost.XGBClassifier
+    - estimator: lightgbm.LGBMClassifier
+    # 回归
+  #    - estimator: sklearn.linear_model.LinearRegression
+  #      param_grid: [ ]
+  #    - estimator: sklearn.neighbors.KNeighborsRegressor
+  #    - estimator: sklearn.svm.SVR
+  #    - estimator: sklearn.tree.DecisionTreeRegressor
+  #    - estimator: sklearn.ensemble.RandomForestRegressor
+  #    - estimator: lightgbm.LGBMRegressor
+  #    - estimator: RandomForestClassifier
   fine_tune: GridSearchCV
   assessments:
-    - name: root_mean_squared_error
-      min_max: min
-    - name: r2_score
+    #    - name: mean_squared_error
+    #      min_max: min
+    #    - name: r2_score
+    #      min_max: max
+    #    - name: accuracy_score
+    #      min_max: max
+    #      params:
+    #    - name: precision_score
+    #      min_max: max
+    #      params: { average: micro }
+    - name: f1_score
       min_max: max
-  #    - name: accuracy_score
-  #      min_max: max
-  #      params:
-  #    - name: precision_score
-  #      min_max: max
-  #      params: { average: micro }
-  #    - name: f1_score
-  #      min_max: max
-  #      params: { average: micro }
+      params: { average: micro }
   #    - name: recall_score
   #      min_max: max
   #      params: { average: micro }

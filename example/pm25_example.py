@@ -1,6 +1,6 @@
 import pandas as pd
 
-from data_reader import DataReader
+from data_reader import DataIntegration
 from data_explorer import DataExplorer
 from data_splitter import DataSplitter
 from data_processor import DataProcessor
@@ -17,7 +17,7 @@ def auto_pm25():
     conf = Configuration(conf_path=r'../conf/pm25_ml_config.yml')
 
     # 1.数据读取.
-    data_reader = DataReader(ds_type='file', conf=conf)
+    data_reader = DataIntegration(ds_type='file', conf=conf)
     train_data = data_reader.read_train()
     test_data = data_reader.read_test()
 
@@ -90,9 +90,9 @@ def auto_arima_pm25():
     conf = Configuration(conf_path=r'../conf/pm25_ml_config.yml')
 
     # 1.数据读取.
-    data_reader = DataReader(ds_type='file', conf=conf)
+    data_reader = DataIntegration(ds_type='file', conf=conf)
     train_data = data_reader.read_train()
-    j = train_data.iloc[26996]
+
     # 将日期和小时数拼接成字符串
     train_data['date'] = train_data['date'].astype(str) + ' ' + \
                          train_data['hour'].astype(str).str.zfill(2) + ':00:00'
@@ -102,27 +102,10 @@ def auto_arima_pm25():
     train_data = train_data.sort_values(['date'])
     train_data = train_data.set_index('date')
 
-    train_series_data = train_data.asfreq('1h')
 
-    na_rows = train_series_data[train_series_data.isna().any(axis=1)].index
-    total = len(na_rows)
-    i = 0
-    for na_row in na_rows:
-        history_data = train_series_data.loc[:na_row]
-        history_data = history_data[:-1]
-        arima_model = ARIMA(history_data, order=(1, 1, 0)).fit()
-        forecast = arima_model.forecast(steps=2)
-        forecast = forecast.iloc[-1]
-        train_series_data.loc[na_row] = forecast
-        i += 1
-        if i % 100 == 0:
-            break
-            print(f'total={total},i={i}')
-    f=train_series_data.loc[:'2013-01-11 16:00:00']
-    l = len(f)
     # 数据切分.
     data_splitter = DataSplitter(conf=conf)
-    train_data_list, valid_data_list = data_splitter.split(train_series_data)
+    train_data_list, valid_data_list = data_splitter.split(train_data)
     train_series_data = train_data_list[0]
     valid_series_data = valid_data_list[0]
 
@@ -148,12 +131,13 @@ def auto_arima_pm25():
     pre_arima_step = arima_model.forecast(steps=diff_num)
     pre_arima.loc[len(pre_arima)] = pre_arima_step.values[diff_num - 1]
     pre_arima = pre_arima.shift(-diff_num)[:-diff_num]
+
     # 输入去掉最后一个点. 预测去掉第一个点.
     train_rmse = root_mean_squared_error(input, pre_arima)
     print('train_rmse=', train_rmse)
     valid_min_time = min(valid_series_data.index)
     valid_max_time = max(valid_series_data.index)
-    valid_pre_arima = arima_model.predict(start=valid_min_time, end='2014-01-14 08:00:00')
+    valid_pre_arima = arima_model.predict(start='2014-01-14', end='2014-02-14')
 
     plt.figure(figsize=(20, 6))
     plt.plot(input[:num], color='red', label='input')

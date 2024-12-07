@@ -15,6 +15,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_selection import VarianceThreshold
 from data_explorer import DataExplorer
+from sklearn.decomposition import PCA
 
 # 配置.
 DROP_FIELDS = 'drop_fields'
@@ -27,7 +28,7 @@ transformer_dic = {
 
 
 class DataProcessor:
-    def __init__(self, conf: Configuration, base_data_explorer: DataExplorer):
+    def __init__(self, conf: Configuration, base_data_explorer: DataExplorer = None):
         self._conf = conf.conf
         # 基数据: 比如处理测试数据缺失值时，使用训练数据的统计量填充.
         # 此时，训练数据就是基数据，测试数据是要处理的数据.
@@ -97,7 +98,7 @@ class DataProcessor:
             variance_threshold_fields = [field for field in self._variance_threshold_fields if
                                          field in selected_data.columns]
             selected_data = selected_data.drop(columns=variance_threshold_fields)
-        print(f'方差阈值特征选择，删除的特征数：{len(variance_threshold_fields)}')
+        print(f'方差阈值特征选择，删除的特征（{len(variance_threshold_fields)}）：{variance_threshold_fields}')
         print(f"方差阈值特征选择后，特征数量: {len(selected_data.columns)}")
 
         return selected_data
@@ -206,8 +207,12 @@ class DataProcessor:
         return copy_data
 
     def clean_outlier_field(self, data: DataFrame):
-        data_copy = data.copy()
         outlier_cleaners = self._field_cleaner_conf.get('outlier_cleaners')
+        if outlier_cleaners is None:
+            return data
+
+        data_copy = data.copy()
+
         for outlier_cleaner in outlier_cleaners:
             fields = outlier_cleaner.get('fields')
             if not fields:
@@ -235,7 +240,7 @@ class DataProcessor:
         :param data: 待检测数据
         :return:
         """
-        data_copy = self._data
+        data_copy = data.copy()
         fields = list(set(self._class_value_field_list + self._value_field_list))
         if len(self._class_text_field_list) > 0:
             fields = list(set(fields + self._class_text_field_list))
@@ -369,22 +374,41 @@ class DataProcessor:
             target_data = None
             feature_copy_data = copy_data
 
-        # 处理转换器配置.
-        steps = self._field_transformer_conf.get('steps')
-        step_instance_list = []
-        for step in steps:
-            step_name = step.get('step_name')
-            if 'column_transformer' in step.keys():
-                column_transformer = step.get('column_transformer')
-                column_transformer_instance = self.build_column_transformer(column_transformer, feature_copy_data)
-                step_instance_list.append((step_name, column_transformer_instance))
-            elif 'transformer' in step.keys():
-                transformer = step.get('transformer')
-                cls = self.build_transformer(transformer)
-                step_instance_list.append((step_name, cls))
-        # 定义流水线.
-        pipeline = Pipeline(steps=step_instance_list)
+        # # 处理转换器配置.
+        # steps = self._field_transformer_conf.get('steps')
+        # step_instance_list = []
+        # for step in steps:
+        #     step_name = step.get('step_name')
+        #     if 'column_transformer' in step.keys():
+        #         column_transformer = step.get('column_transformer')
+        #         column_transformer_instance = self.build_column_transformer(column_transformer, feature_copy_data)
+        #         step_instance_list.append((step_name, column_transformer_instance))
+        #     elif 'transformer' in step.keys():
+        #         transformer = step.get('transformer')
+        #         cls = self.build_transformer(transformer)
+        #         step_instance_list.append((step_name, cls))
+
+        # # 定义流水线.
+        # pipeline = Pipeline(steps=step_instance_list)
+        # transformed_data = pipeline.fit_transform(X=feature_copy_data)
+
+        # 自定义方式.
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('label_id_tfidf', TfidfVectorizer(max_features=50), 'label_id'),
+                ('category_tfidf', TfidfVectorizer(max_features=50), 'category'),
+                ('OrdinalEncoder', OrdinalEncoder(), ['phone_brand', 'device_model'])
+            ], remainder='passthrough')
+        pipeline = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            # ('sparse', SparseTransformer()),
+            ('max_min', MaxAbsScaler())
+            # ,('pca', PCA(n_components=0.9))
+        ])
+
         transformed_data = pipeline.fit_transform(X=feature_copy_data)
+        transformed_data = SparseTransformer().fit_transform(transformed_data)
         transformed_data = pd.DataFrame(data=transformed_data, columns=pipeline.get_feature_names_out())
         # 连接目标字段.
         if target_data is not None:
@@ -513,7 +537,6 @@ class SparseTransformer(BaseEstimator, TransformerMixin):
         pass
 
     def fit(self, X, y=None):
-        self.n_features_in_ = X.shape[1]
 
         return self
 

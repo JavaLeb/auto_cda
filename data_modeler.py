@@ -9,6 +9,10 @@ from operator import methodcaller
 from tools import print_with_sep_line, logger
 import joblib
 
+
+
+
+
 model_dic = {
     'sklearn.svm': ['SVC', 'LinearSVR', 'SVR'],
     'sklearn.ensemble': ['RandomForestRegressor', 'RandomForestClassifier'],
@@ -126,7 +130,8 @@ class DataModeler:
                                                            **params)
                     valid_assess_result = valid_assessment_method(sklearn.metrics)
                     valid_assess_list.append(valid_assess_result)
-                except Exception:
+                except Exception as e:
+                    logger.error(e)
                     raise Exception(f'模型{model}评估时，评估方法{assess_name}异常')
             train_assess.append(train_assess_list)
             valid_assess.append(valid_assess_list)
@@ -168,6 +173,8 @@ class DataModeler:
 
         logger.info('数据建模完成!!!!!!!!!!!!!!!!!!')
 
+        return self._best_model,self._label_encoder
+
     def best_model(self):
         return self._best_model
 
@@ -179,7 +186,7 @@ class DataModeler:
             os.makedirs(dir_path)
         # 保存最佳模型
         for best_model in self._best_model:
-            model_path = f'{dir_path}/{best_model}.pkl'
+            model_path = f'{dir_path}/best_model.pkl'
             # 模型保存
             joblib.dump(best_model, model_path)
             print(f'模型保存路径{model_path}')

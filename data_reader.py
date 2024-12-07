@@ -7,7 +7,7 @@ import polars as pl
 
 
 class DataIntegration:
-    def __init__(self, ds_type, conf: Configuration) -> None:
+    def __init__(self, conf: Configuration, ds_type='file') -> None:
         self._ds_type = ds_type
         data_source_conf = conf.data_source_conf
         self._train_path = data_source_conf.get('train_path')
@@ -17,14 +17,29 @@ class DataIntegration:
         self._header = data_source_conf.get('header')
         self._file_path = None
 
+    def read_reduce_memory(self, file_path: str = None,
+                           file_format: str = 'csv',
+                           field_sep: str = None,
+                           header: int = None,
+                           date_time_col=None,
+                           date_format='%Y-%m-%d %H:%M:%S',
+                           train: bool = True) -> DataFrame:
+        data = self.read(file_path, file_format, field_sep, header, date_time_col, date_format, train)
+        data = self.reduce_memory(data)
+
+        return data
+
     def read(self, file_path: str = None,
              file_format: str = 'csv',
              field_sep: str = None,
              header: int = None,
+             date_time_col = None,
+             date_format='%Y-%m-%d %H:%M:%S',
              train: bool = True) -> DataFrame:
         """
         读取文件.
 
+        :param date_time_col: 日期时间字段.
         :param file_path: 文件路径.
         :param file_format: 文件格式，支持（1）csv:文本格式，包括txt，（2）excel.
         :param field_sep: 行分隔符.
@@ -58,12 +73,15 @@ class DataIntegration:
                 data = pl.read_csv(self._file_path,
                                    has_header=True if self._header == 0 else False,
                                    separator=self._field_sep).to_pandas()
+
             elif 'excel' == self._file_format:  # 读取excel文件.
                 data = pd.read_excel(self._file_path, header=self._header)
             else:  # 其他文件格式暂时抛出异常.
                 raise Exception(f"读取文件失败，文件路径：{self._file_path}！不支持的数据格式.")
         else:
             raise Exception('不支持的数据源类型')
+        if date_time_col and len(date_time_col) > 0:
+            data[date_time_col] = pd.to_datetime(data[date_time_col], format=date_format)
         logger.info(f'数据[{self._file_path}]加载成功!!!!!!!!!!!!!!!!!!!!')
 
         return data
