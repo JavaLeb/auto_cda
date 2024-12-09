@@ -33,7 +33,7 @@ class DataIntegration:
              file_format: str = 'csv',
              field_sep: str = None,
              header: int = None,
-             date_time_col = None,
+             date_time_col=None,
              date_format='%Y-%m-%d %H:%M:%S',
              train: bool = True) -> DataFrame:
         """
@@ -110,7 +110,7 @@ class DataIntegration:
                     df[col] = col_value
         end_mem = df.memory_usage().sum() / 1024 ** 2  # 压缩后内存大小.
         logger.info(f'Memory usage {round(start_mem, 2)} MB, after optimization {round(end_mem, 2)} MB, '
-              f'reduce ratio {round((start_mem - end_mem) / start_mem, 2)}')
+                    f'reduce ratio {round((start_mem - end_mem) / start_mem, 2)}')
 
         return df
 

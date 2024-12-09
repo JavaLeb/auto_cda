@@ -22,12 +22,12 @@ def auto_202409():
     # 数据读取.
     data_integration = DataIntegration(conf=conf)
     training_data = data_integration.read_reduce_memory(file_path=r'../data/202409/training_data.csv')
-    training_data = training_data.head(10000)
+    # training_data = training_data.head(10000)
     phone_brand_device_model_data = data_integration \
         .read_reduce_memory(file_path=r'../data/202409/phone_brand_device_model.csv')
     events_data = data_integration.read_reduce_memory(file_path=r'../data/202409/events.csv',
                                                       date_time_col='timestamp')
-    events_data = events_data.head(10000)
+    # events_data = events_data.head(10000)
     app_events_data = data_integration.read_reduce_memory(file_path=r'../data/202409/app_events.csv')
     app_labels_data = data_integration.read_reduce_memory(file_path=r'../data/202409/app_labels.csv')
     label_categories_data = data_integration.read_reduce_memory(file_path=r'../data/202409/label_categories.csv')
@@ -35,27 +35,27 @@ def auto_202409():
     # 测试数据读取.
     test_data = data_integration.read_reduce_memory(train=False)
 
-    # 数据探索.
-    training_data_explorer = DataExplorer(conf=conf, data=training_data, duplicate_fields=['device_id'])
-    training_data_explorer.explore()
-
-    phone_brand_device_model_data_explorer = DataExplorer(conf=conf, data=phone_brand_device_model_data)
-    phone_brand_device_model_data_explorer.explore()
-
-    events_data_explorer = DataExplorer(conf=conf, data=events_data)
-    events_data_explorer.explore()
-
-    app_events_data_explorer = DataExplorer(conf=conf, data=app_events_data)
-    app_events_data_explorer.explore()
-
-    app_labels_data_explorer = DataExplorer(conf=conf, data=app_labels_data)
-    app_labels_data_explorer.explore()
-
-    label_categories_data_explorer = DataExplorer(conf=conf, data=label_categories_data)
-    label_categories_data_explorer.explore()
-
-    test_data_explorer = DataExplorer(conf=conf, data=test_data)
-    test_data_explorer.explore()
+    # # 数据探索.
+    # training_data_explorer = DataExplorer(conf=conf, data=training_data, duplicate_fields=['device_id'])
+    # training_data_explorer.explore()
+    #
+    # phone_brand_device_model_data_explorer = DataExplorer(conf=conf, data=phone_brand_device_model_data)
+    # phone_brand_device_model_data_explorer.explore()
+    #
+    # events_data_explorer = DataExplorer(conf=conf, data=events_data)
+    # events_data_explorer.explore()
+    #
+    # app_events_data_explorer = DataExplorer(conf=conf, data=app_events_data)
+    # app_events_data_explorer.explore()
+    #
+    # app_labels_data_explorer = DataExplorer(conf=conf, data=app_labels_data)
+    # app_labels_data_explorer.explore()
+    #
+    # label_categories_data_explorer = DataExplorer(conf=conf, data=label_categories_data)
+    # label_categories_data_explorer.explore()
+    #
+    # test_data_explorer = DataExplorer(conf=conf, data=test_data)
+    # test_data_explorer.explore()
 
     # 数据合并.
     device_id = 'device_id'
@@ -131,8 +131,7 @@ def auto_202409():
     all_training_data = data_processor.process(all_training_data)
 
     data_splitter = DataSplitter(conf=conf)
-    train_data_list, valid_data_list = data_splitter.split(all_training_data)
-    train_data, valid_data = train_data_list[0], valid_data_list[0]
+    train_data, valid_data = data_splitter.split0(all_training_data)
 
     data_modeler = DataModeler(conf=conf)
     data_modeler.model(train_data, valid_data)

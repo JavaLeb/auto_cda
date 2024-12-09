@@ -58,5 +58,9 @@ class DataSplitter:
         logger.info('数据切分完成！！！！！！！！！！！！！！！！！！！！！！')
         return self._train_data_list, self._valid_data_list
 
+    def split0(self, data: DataFrame = None):
+        self.split(data)
+        return self._train_data_list[0], self._valid_data_list[0]
+
     def print_summary(self):
         logger.info(f'数据划分摘要：\n{self._summary.to_markdown()}')

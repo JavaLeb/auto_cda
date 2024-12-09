@@ -1,6 +1,10 @@
 import yaml
 from typing import Any
 from data_logger import auto_cda_logger as logger
+import os
+import sys
+
+project_root = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
 class ConfParser:

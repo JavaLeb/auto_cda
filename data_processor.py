@@ -39,7 +39,7 @@ class DataProcessor:
         # 一级配置.
         self._field_selection_conf = self._data_processor_conf.get('field_selection')
         self._field_cleaner_conf = self._data_processor_conf.get('field_cleaner')
-        self._field_transformer_conf = self._data_processor_conf.get('field_transformer')
+        self._data_transformer_conf = self._data_processor_conf.get('data_transformer')
         # 二级配置.
         self._na_cleaners_conf = self._field_cleaner_conf.get('na_cleaners')
 
@@ -78,14 +78,14 @@ class DataProcessor:
         if len(dropped_fields) > 0:
             logger.info('待处理数据字段与当前数据处理器的基数据字段不一致, 将会被删除。')
             selected_data = data.drop(columns=dropped_fields)
-            logger.info('已删除待处理数据比基数据新增的如下字段：\n{dropped_fields}' )
+            logger.info('已删除待处理数据比基数据新增的如下字段：\n{dropped_fields}')
         else:
             selected_data = data.copy()
 
         # 删除字段.
         drop_fields = [field for field in self._drop_fields if field in selected_data.columns]
         if len(drop_fields) > 0:
-            logger.info(f'删除配置中需要删除的字段：\n{ drop_fields}')
+            logger.info(f'删除配置中需要删除的字段：{drop_fields}')
             selected_data = selected_data.drop(drop_fields, axis=1)
 
         # 方差阈值选择特征.
@@ -102,12 +102,12 @@ class DataProcessor:
 
     def _variance_threshold(self, data: DataFrame):
 
-        data_copy = data.dropna()   # 含有缺失值的列不做方差阈值特征选择.
+        data_copy = data.dropna()  # 含有缺失值的列不做方差阈值特征选择.
         # 文本类别字段需要编码，object字段不需要删除.
         if len(self._class_text_field_list) > 0:
             label_encoder = LabelEncoder()
             for field in self._class_text_field_list:
-                data_copy.loc[:,field] = label_encoder.fit_transform(data_copy[field])
+                data_copy.loc[:, field] = label_encoder.fit_transform(data_copy[field])
         if len(self._object_field_list) > 0:
             data_copy = data_copy.drop(columns=self._object_field_list)
 
@@ -343,21 +343,36 @@ class DataProcessor:
         注：只对特征字段转换，不转换目标字段.
 
         这里根据需要自定义实现转换逻辑：Pipeline + ColumnTransformer.
-         transformer = Pipeline(steps=[
-             ('pre', ColumnTransformer(transformers=[
-                 ('standard_scaler', StandardScaler(), ['V0', 'V1']),
-                 ('min_max_scaler', MinMaxScaler(), ['V2', 'V3'])
-             ], remainder='passthrough')),
-             ('pca', PCA(n_components=0.9))
-         ])
-         result = transformer.fit_transform(data)
-         注意：不可以两个step中都有ColumnTransformer，只可以第一个是ColumnTransformer，否则fields只能使用数字.
+        example1:
+             transformer = Pipeline(steps=[
+                 ('pre', ColumnTransformer(transformers=[
+                     ('standard_scaler', StandardScaler(), ['V0', 'V1']),
+                     ('min_max_scaler', MinMaxScaler(), ['V2', 'V3'])
+                 ], remainder='passthrough')),
+                 ('pca', PCA(n_components=0.9))
+             ])
+             result = transformer.fit_transform(data)
+         example2:
+                 # 自定义方式定义流水线.
+                preprocessor = ColumnTransformer(
+                    transformers=[
+                        ('label_id_tfidf', TfidfVectorizer(max_features=50), 'label_id'),
+                        ('category_tfidf', TfidfVectorizer(max_features=50), 'category'),
+                        ('OrdinalEncoder-phone_brand', OrdinalEncoder(), ['phone_brand']),
+                        ('OrdinalEncoder-device_model', OrdinalEncoder(), ['device_model'])
+                    ], remainder='passthrough')
+                pipeline = Pipeline(steps=[
+                    ('preprocessor', preprocessor),
+                    # ('sparse', SparseTransformer()),
+                    ('max_min', MaxAbsScaler())
+                    # ,('pca', PCA(n_components=0.9))
+                ])
         :param data:
         :return:
         """
 
         # 未配置转换器，直接返回原数据.
-        if not self._field_transformer_conf:  # 如果未配置了转换器.
+        if not self._data_transformer_conf:  # 如果未配置了转换器.
             return data
 
         # 复制一份原数据.
@@ -370,46 +385,30 @@ class DataProcessor:
             target_data = None
             feature_copy_data = copy_data
 
-        # # 处理转换器配置.
-        # steps = self._field_transformer_conf.get('steps')
-        # step_instance_list = []
-        # for step in steps:
-        #     step_name = step.get('step_name')
-        #     if 'column_transformer' in step.keys():
-        #         column_transformer = step.get('column_transformer')
-        #         column_transformer_instance = self.build_column_transformer(column_transformer, feature_copy_data)
-        #         step_instance_list.append((step_name, column_transformer_instance))
-        #     elif 'transformer' in step.keys():
-        #         transformer = step.get('transformer')
-        #         cls = self.build_transformer(transformer)
-        #         step_instance_list.append((step_name, cls))
+        # 处理转换器配置.
+        steps = self._data_transformer_conf.get('steps')
+        step_instance_list = []
+        for step in steps:
+            step_name = step.get('step_name')
+            if 'column_transformer' in step.keys():
+                column_transformer = step.get('column_transformer')
+                column_transformer_instance = self.build_column_transformer(column_transformer, feature_copy_data)
+                step_instance_list.append((step_name, column_transformer_instance))
+            elif 'transformer' in step.keys():
+                transformer = step.get('transformer')
+                cls = self.build_transformer(transformer)
+                step_instance_list.append((step_name, cls))
 
-        # # 定义流水线.
-        # pipeline = Pipeline(steps=step_instance_list)
-        # transformed_data = pipeline.fit_transform(X=feature_copy_data)
-
-        # 自定义方式.
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ('label_id_tfidf', TfidfVectorizer(max_features=50), 'label_id'),
-                ('category_tfidf', TfidfVectorizer(max_features=50), 'category'),
-                ('OrdinalEncoder', OrdinalEncoder(), ['phone_brand', 'device_model'])
-            ], remainder='passthrough')
-        pipeline = Pipeline(steps=[
-            ('preprocessor', preprocessor),
-            # ('sparse', SparseTransformer()),
-            ('max_min', MaxAbsScaler())
-            # ,('pca', PCA(n_components=0.9))
-        ])
-
+        # 通用方式定义流水线.
+        pipeline = Pipeline(steps=step_instance_list)
         transformed_data = pipeline.fit_transform(X=feature_copy_data)
         transformed_data = SparseTransformer().fit_transform(transformed_data)
-        transformed_data = pd.DataFrame(data=transformed_data, columns=pipeline.get_feature_names_out())
+        new_cols = [i for i in range(0, transformed_data.shape[1])]
+        transformed_data = pd.DataFrame(data=transformed_data, columns=new_cols)
         # 连接目标字段.
         if target_data is not None:
             transformed_data = pd.concat([transformed_data, target_data], axis=1)
-
+        logger.info(f'数据转换前特征数：{len(feature_copy_data.columns)},转换后特征数：{len(new_cols)}')
         return transformed_data
 
     def build_column_transformer(self, column_transformer, data: DataFrame):
@@ -419,6 +418,7 @@ class DataProcessor:
         transformers_list = []
         for transformer in transformers:
             fields = transformer.get('fields')
+            fields_form = transformer.get('fields_form')
             if fields is None or len(fields) == 0:
                 continue
             if (len(fields) == 1 and fields[0] == '*') or fields == '*':
@@ -430,11 +430,16 @@ class DataProcessor:
                 if len(fields) == 0:
                     continue
             # 这里将字段名称转换为 数字，为了step中可以有多个column_transformer.
-            field_idx = [data.columns.values.tolist().index(field) for field in fields]
+            # field_idx = [data.columns.values.tolist().index(field) for field in fields]
             transformer_name = transformer.get('transformer_name')
             transformer_instance = transformer.get('transformer')
             cls = self.build_transformer(transformer_instance)
-            transformers_list.append((transformer_name, cls, field_idx))
+            # 每个字段，一个column_transformer.
+            for field in fields:
+                if fields_form == 'list':
+                    transformers_list.append((transformer_name + '-' + field, cls, [field]))
+                else:
+                    transformers_list.append((transformer_name + '-' + field, cls, field))
         if column_transformer_params is not None and len(column_transformer_params) > 0:
             column_transformer_instance = RFNColumnTransformer(transformers=transformers_list,
                                                                **column_transformer_params)

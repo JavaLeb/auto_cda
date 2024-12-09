@@ -1,11 +1,7 @@
 from data_configuration import Configuration
-import sys
 from pandas import DataFrame
 from tools import *
 from data_logger import auto_cda_logger as logger
-
-project_root = os.path.dirname(os.path.abspath(sys.argv[0]))
-
 
 
 class DataSubmission:
@@ -57,9 +53,8 @@ class DataSubmission:
         # 结果保存路径
         save_file_path = os.path.join(str(self._result_file_dir), str(self._result_file_name))
         save_data.to_csv(save_file_path, index=False)
-        logger.info('数据结果提交摘要：')
         save_summary['save_data_shape'] = [str(save_data.shape)]
         save_summary['save_columns'] = [str(save_data.columns.values)]
         save_summary['save_path'] = [os.path.abspath(save_file_path)]
-        logger.info(save_summary.to_markdown())
+        logger.info(f'数据结果提交摘要：\n{save_summary.to_markdown()}')
         logger.info('数据结果提交完成！！！！！！！！！！')
