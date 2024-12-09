@@ -1,10 +1,8 @@
-import pandas as pd
 from data_configuration import Configuration
-from tools import get_fields, instantiate_class, print_with_sep_line
 from pandas import DataFrame
-from typing import List
 from scipy import stats
-from tools import logger, is_empty, is_not_empty
+from tools import *
+from data_logger import auto_cda_logger as logger
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.preprocessing import *
 import numpy as np
@@ -15,7 +13,6 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_selection import VarianceThreshold
 from data_explorer import DataExplorer
-from sklearn.decomposition import PCA
 
 # 配置.
 DROP_FIELDS = 'drop_fields'
@@ -79,39 +76,38 @@ class DataProcessor:
         # 非基数据字段，直接删除.
         dropped_fields = [field for field in data.columns if field not in self._base_data.columns]
         if len(dropped_fields) > 0:
-            print('待处理数据字段与当前数据处理器的基数据字段不一致, 将会被删除。')
+            logger.info('待处理数据字段与当前数据处理器的基数据字段不一致, 将会被删除。')
             selected_data = data.drop(columns=dropped_fields)
-            print('已删除待处理数据比基数据新增的如下字段：\n', dropped_fields)
+            logger.info('已删除待处理数据比基数据新增的如下字段：\n{dropped_fields}' )
         else:
             selected_data = data.copy()
 
         # 删除字段.
         drop_fields = [field for field in self._drop_fields if field in selected_data.columns]
         if len(drop_fields) > 0:
-            print('删除配置中需要删除的字段：\n', drop_fields)
+            logger.info(f'删除配置中需要删除的字段：\n{ drop_fields}')
             selected_data = selected_data.drop(drop_fields, axis=1)
 
         # 方差阈值选择特征.
-        print_with_sep_line(f"方差阈值特征选择前，原始特征数量: {len(selected_data.columns)}")
+        logger.info(f"方差阈值特征选择前，原始特征数量: {len(selected_data.columns)}")
         variance_threshold_fields = self._variance_threshold_fields
         if len(variance_threshold_fields):
             variance_threshold_fields = [field for field in self._variance_threshold_fields if
                                          field in selected_data.columns]
             selected_data = selected_data.drop(columns=variance_threshold_fields)
-        print(f'方差阈值特征选择，删除的特征（{len(variance_threshold_fields)}）：{variance_threshold_fields}')
-        print(f"方差阈值特征选择后，特征数量: {len(selected_data.columns)}")
+        logger.info(f'方差阈值特征选择，删除的特征（{len(variance_threshold_fields)}）：{variance_threshold_fields}')
+        logger.info(f"方差阈值特征选择后，特征数量: {len(selected_data.columns)}")
 
         return selected_data
 
     def _variance_threshold(self, data: DataFrame):
 
-        data_copy = data.copy()
-
+        data_copy = data.dropna()   # 含有缺失值的列不做方差阈值特征选择.
         # 文本类别字段需要编码，object字段不需要删除.
         if len(self._class_text_field_list) > 0:
             label_encoder = LabelEncoder()
             for field in self._class_text_field_list:
-                data_copy[field] = label_encoder.fit_transform(data_copy[field])
+                data_copy.loc[:,field] = label_encoder.fit_transform(data_copy[field])
         if len(self._object_field_list) > 0:
             data_copy = data_copy.drop(columns=self._object_field_list)
 
@@ -124,7 +120,7 @@ class DataProcessor:
             deleted_features = [feature for feature, variance in zip(data_copy.columns, variances) if variance <= 0]
             deleted_features_set.update(set(deleted_features))
         except ValueError as e:
-            print('所有特征将会被删除，这是不允许的！', e)
+            logger.error('所有特征将会被删除，这是不允许的！', e)
 
         # 再找出配置的字段.
         variance_threshold_selection = self._field_selection_conf.get('variance_threshold_selection')

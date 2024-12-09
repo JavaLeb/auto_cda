@@ -2,8 +2,8 @@ import numpy as np
 
 from data_configuration import Configuration
 from pandas import DataFrame
-from tools import print_with_sep_line, instantiate_class, logger, is_empty, is_not_empty
-import pandas as pd
+from tools import *
+from data_logger import auto_cda_logger as logger
 from operator import methodcaller
 from sklearn import model_selection
 
@@ -59,4 +59,4 @@ class DataSplitter:
         return self._train_data_list, self._valid_data_list
 
     def print_summary(self):
-        print_with_sep_line('数据划分摘要：\n', self._summary.to_markdown())
+        logger.info(f'数据划分摘要：\n{self._summary.to_markdown()}')

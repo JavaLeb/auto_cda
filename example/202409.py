@@ -3,6 +3,7 @@ import sklearn.metrics
 
 from data_reader import DataIntegration
 from tools import *
+import numpy as np
 from data_explorer import DataExplorer
 from data_splitter import DataSplitter
 from data_processor import DataProcessor
@@ -11,6 +12,7 @@ from data_configuration import Configuration
 import joblib
 from collections import Counter
 from sklearn.metrics import f1_score
+from data_submission import DataSubmission
 
 
 def auto_202409():
@@ -20,10 +22,12 @@ def auto_202409():
     # 数据读取.
     data_integration = DataIntegration(conf=conf)
     training_data = data_integration.read_reduce_memory(file_path=r'../data/202409/training_data.csv')
+    training_data = training_data.head(10000)
     phone_brand_device_model_data = data_integration \
         .read_reduce_memory(file_path=r'../data/202409/phone_brand_device_model.csv')
     events_data = data_integration.read_reduce_memory(file_path=r'../data/202409/events.csv',
                                                       date_time_col='timestamp')
+    events_data = events_data.head(10000)
     app_events_data = data_integration.read_reduce_memory(file_path=r'../data/202409/app_events.csv')
     app_labels_data = data_integration.read_reduce_memory(file_path=r'../data/202409/app_labels.csv')
     label_categories_data = data_integration.read_reduce_memory(file_path=r'../data/202409/label_categories.csv')
@@ -32,26 +36,26 @@ def auto_202409():
     test_data = data_integration.read_reduce_memory(train=False)
 
     # 数据探索.
-    # training_data_explorer = DataExplorer(conf=conf, data=training_data, duplicate_fields=['device_id'])
-    # training_data_explorer.explore()
-    #
-    # phone_brand_device_model_data_explorer = DataExplorer(conf=conf, data=phone_brand_device_model_data)
-    # phone_brand_device_model_data_explorer.explore()
-    #
-    # events_data_explorer = DataExplorer(conf=conf, data=events_data)
-    # events_data_explorer.explore()
-    #
-    # app_events_data_explorer = DataExplorer(conf=conf, data=app_events_data)
-    # app_events_data_explorer.explore()
-    #
-    # app_labels_data_explorer = DataExplorer(conf=conf, data=app_labels_data)
-    # app_labels_data_explorer.explore()
-    #
-    # label_categories_data_explorer = DataExplorer(conf=conf, data=label_categories_data)
-    # label_categories_data_explorer.explore()
+    training_data_explorer = DataExplorer(conf=conf, data=training_data, duplicate_fields=['device_id'])
+    training_data_explorer.explore()
 
-    # test_data_explorer = DataExplorer(conf=conf, data=test_data)
-    # test_data_explorer.explore()
+    phone_brand_device_model_data_explorer = DataExplorer(conf=conf, data=phone_brand_device_model_data)
+    phone_brand_device_model_data_explorer.explore()
+
+    events_data_explorer = DataExplorer(conf=conf, data=events_data)
+    events_data_explorer.explore()
+
+    app_events_data_explorer = DataExplorer(conf=conf, data=app_events_data)
+    app_events_data_explorer.explore()
+
+    app_labels_data_explorer = DataExplorer(conf=conf, data=app_labels_data)
+    app_labels_data_explorer.explore()
+
+    label_categories_data_explorer = DataExplorer(conf=conf, data=label_categories_data)
+    label_categories_data_explorer.explore()
+
+    test_data_explorer = DataExplorer(conf=conf, data=test_data)
+    test_data_explorer.explore()
 
     # 数据合并.
     device_id = 'device_id'
@@ -71,9 +75,6 @@ def auto_202409():
     app_events_labels_categories_data = app_events_data.merge(app_labels_categories_data, on=app_id, how='left')
     app_events_labels_categories_data = events_data.merge(app_events_labels_categories_data, on=event_id, how='left')
 
-    # 设备信息去重.
-    phone_brand_device_model_data = phone_brand_device_model_data.drop_duplicates(subset=[device_id])
-
     # 删除na后使用逗号分隔.
     to_list_lambda = lambda x: ','.join(x.dropna())
     top_one_lambda = lambda x: Counter(x.tolist()).most_common(1)[0]
@@ -83,9 +84,6 @@ def auto_202409():
     top_cnt_lambda = lambda x: top_one_lambda(x)[1]
     # 聚合函数字典.
     agg_dic = {
-        'group': [('group', 'first')],
-        'phone_brand': [('phone_brand', 'first')],
-        'device_model': [('device_model', 'first')],
         'event_id': [('event_id_min', 'min'), ('event_id_mean', 'mean'), ('event_id_max', 'max'),
                      ('event_id_nunique', 'nunique')],
         'app_id': [('app_id_min', 'min'), ('app_id_mean', 'mean'), ('app_id_max', 'max'),
@@ -110,17 +108,19 @@ def auto_202409():
                      #          ('category_top1_cnt', top_cnt_lambda)
                      ]
     }
-
-    # 最终训练数据合并.
-    training_events_app_data = training_data \
-        .merge(phone_brand_device_model_data, on=device_id, how='left') \
-        .merge(app_events_labels_categories_data, on=device_id, how='left')
+    # 聚合提取特征.
+    app_events_labels_categories_agg_data = app_events_labels_categories_data.groupby(device_id).agg(
+        agg_dic).reset_index()
+    app_events_labels_categories_agg_data.columns = get_agg_df_new_col(agg_df=app_events_labels_categories_agg_data)
+    # 设备信息去重.
+    phone_brand_device_model_data = phone_brand_device_model_data.drop_duplicates(subset=[device_id])
 
     # =====================================训练数据处理开始=======================================
-    # 聚合提取特征.
-    all_training_data = training_events_app_data.groupby(device_id).agg(agg_dic).reset_index()
-    # 列重命名.
-    all_training_data.columns = get_agg_df_new_col(agg_df=all_training_data)
+
+    # 最终训练数据合并.
+    all_training_data = training_data \
+        .merge(phone_brand_device_model_data, on=device_id, how='left') \
+        .merge(app_events_labels_categories_agg_data, on=device_id, how='left')
 
     # 数据探索.
     training_data_explorer = DataExplorer(conf=conf, data=all_training_data)
@@ -135,27 +135,45 @@ def auto_202409():
     train_data, valid_data = train_data_list[0], valid_data_list[0]
 
     data_modeler = DataModeler(conf=conf)
-    model,label_encoder = data_modeler.model(train_data, valid_data)
+    data_modeler.model(train_data, valid_data)
     # =====================================训练数据处理结束=======================================
 
     # =====================================测试数据处理开始=======================================
-    # 读取测试答案数据.
-    test_ans_data = data_integration.read(file_path=r'../data/202409/test_data_with_Ans.csv')
-
-    test_ans_events_app_data = test_ans_data \
+    all_test_data = test_data \
         .merge(phone_brand_device_model_data, on=device_id, how='left') \
-        .merge(app_events_labels_categories_data, on=device_id, how='left')
+        .merge(app_events_labels_categories_agg_data, on=device_id, how='left')
 
-    # 聚合提取特征.
-    all_test_ans_data = test_ans_events_app_data.groupby(device_id).agg(agg_dic).reset_index()
-    all_test_ans_data.columns = get_agg_df_new_col(agg_df=all_test_ans_data)
+    all_test_data = data_processor.process(all_test_data)
+    predict_value = data_modeler.predict(all_test_data)
 
-    all_test_ans_data = data_processor.process(all_test_ans_data)
-    for best_model in model:
-        predict = best_model.predict(all_test_ans_data.drop(columns=['group']))
-        predict = label_encoder.inverse_transform(predict)
-        score = f1_score(all_test_ans_data['group'].values, predict, average='micro')
-        print(f'score={score}')
+    # 提交数据结果.
+    data_submission = DataSubmission(conf=conf)
+    data_submission.submit(test_data, predict_value)
+    # =====================================测试数据处理结束=======================================
+
+    # # =====================================测试答案数据处理开始=======================================
+    # # 读取测试答案数据.
+    # test_ans_data = data_integration.read(file_path=r'../data/202409/test_data_with_Ans.csv')
+    #
+    # test_ans_events_app_data = test_ans_data \
+    #     .merge(phone_brand_device_model_data, on=device_id, how='left') \
+    #     .merge(app_events_labels_categories_data, on=device_id, how='left')
+    #
+    # # 聚合提取特征.
+    # all_test_ans_data = test_ans_events_app_data.groupby(device_id).agg(agg_dic).reset_index()
+    # all_test_ans_data.columns = get_agg_df_new_col(agg_df=all_test_ans_data)
+    #
+    # all_test_ans_data = data_processor.process(all_test_ans_data)
+    #
+    #
+    # for best_model in model:
+    #     predict = best_model.predict(all_test_ans_data.drop(columns=['group']))
+    #     predict = label_encoder.inverse_transform(predict)
+    #
+    #     score = f1_score(all_test_ans_data['group'].values, predict, average='micro')
+    #     print(f'score={score}')
+    #     data_submission = DataSubmission(conf=conf)
+    #     data_submission.submit(test_ans_data,predict)
 
 
 if __name__ == '__main__':

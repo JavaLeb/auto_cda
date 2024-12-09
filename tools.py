@@ -1,22 +1,10 @@
 import fnmatch
-import logging
 import os
 import zipfile
 import glob
 import configparser
 import shutil
 import pandas as pd
-
-logger = logging.getLogger('auto_cda_logger')
-logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler())
-
-sep_line = '=' * 200
-
-
-def print_with_sep_line(self, *args, sep=' ', end='\n', file=None):
-    print(sep_line)
-    print(self, *args, sep=sep, end=end, file=file)
 
 
 def get_fields(sub_conf, conf_name, data_columns):

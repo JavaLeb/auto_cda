@@ -201,31 +201,24 @@ data_processor:
         clean_method:   # 同 na_cleaners: clean_method.
     na_cleaners:
       - fields: [ event_id_min,event_id_mean,event_id_max,event_id_nunique,
-                  app_id_min,app_id_mean,app_id_max,app_id_nunique ]
+                  app_id_min,app_id_mean,app_id_max,app_id_nunique,
+                  longitude_min,longitude_mean,longitude_max,longitude_std,
+                  latitude_min,latitude_mean,latitude_max,latitude_std,timestamp_nunique,
+                  is_installed_min,is_installed_mean,is_installed_max,is_installed_sum,
+                  is_active_min,is_active_mean,is_active_max,is_active_sum]
         clean_method: simple_fill
         fill_params: { strategy: constant,
                        fill_value: 0,
                        add_indicator: false }
-      - fields: [ longitude_min,longitude_mean,longitude_max,longitude_std ]
-        clean_method: simple_fill
-        fill_params: { strategy: constant,
-                       fill_value: 0,
-                       add_indicator: false }
-      - fields: [ latitude_min,latitude_mean,latitude_max,latitude_std]
-        clean_method: simple_fill
-        fill_params: { strategy: constant,
-                       fill_value: 0,
-                       add_indicator: false }
-      - fields: [timestamp_min,timestamp_max ]
+      - fields: [ timestamp_min,timestamp_max ]
         clean_method: simple_fill
         fill_params: { strategy: mean,
                        fill_value: ,
                        add_indicator: false }
-      - fields: [ is_installed_min,is_installed_mean,is_installed_max,is_installed_sum,
-                  is_active_min,is_active_mean,is_active_max,is_active_sum ]
+      - fields: [ label_id,category ]
         clean_method: simple_fill
         fill_params: { strategy: constant,
-                       fill_value: 0,
+                       fill_value: ,
                        add_indicator: false }
   # ---------------------------------------------------------------------------------------------------------------
   # 字段转换器配置.
@@ -323,6 +316,7 @@ data_processor:
 #                        sklearn.ensemble.VotingClassifier
 #                        sklearn.ensemble.StackingClassifier
 #                        sklearn.ensemble.GradientBoostingClassifier
+#               线性模型： sklearn.linear_model.LogisticRegression
 #             支持向量机:  sklearn.svm.SVC
 #                决策树:  sklearn.tree.DecisionTreeClassifier
 #                最近邻:  sklearn.neighbors.KNeighborsClassifier
@@ -357,15 +351,16 @@ data_processor:
 #       评估方法的参数.
 # ===================================================================================================================
 data_modeler:
+  save_path: result/model
   target_encoder:
     name: LabelEncoder
   models:
     # 分类.
-#    - estimator: sklearn.ensemble.AdaBoostClassifier
-#    - estimator: sklearn.svm.SVC
-#    - estimator: sklearn.ensemble.BaggingClassifier
-#    - estimator: xgboost.XGBClassifier
-    - estimator: lightgbm.LGBMClassifier
+    #    - estimator: sklearn.ensemble.AdaBoostClassifier
+    #    - estimator: sklearn.svm.SVC
+    #    - estimator: sklearn.ensemble.BaggingClassifier
+    #    - estimator: xgboost.XGBClassifier
+    - estimator: sklearn.linear_model.LogisticRegression
     # 回归
   #    - estimator: sklearn.linear_model.LinearRegression
   #      param_grid: [ ]
@@ -399,5 +394,26 @@ data_modeler:
   #    - name: roc_auc_score
   #      min_max: max
   #      params: { multi_class: ovo }
-  save_predict:
-    path: result/%Y-%m-%d_%H-%M-%S/predict_result.csv
+
+# ===================================================================================================================
+# 数据结果提交配置.
+# result_file_dir:
+#   结果文件目录.
+# result_file_name:
+#   结果文件名称.
+# include_field:
+#   保存字段列表，未配置表示保存所有字段.
+# exclude_field:
+#   不保存的字段列表.
+# predict_field:
+#   预测字段名称.
+# predict_field_position:
+#   预测字段在结果中的列索引，整数类型，例如：-1表示将预测字段保存在最后一列.
+# ===================================================================================================================
+data_submission:
+  result_file_dir: result/submission
+  result_file_name: 考生姓名_results.csv
+  save_field: []
+  exclude_field: []
+  predict_field: Predicted_Results
+  predict_field_position: -1

@@ -1,10 +1,10 @@
 import os.path
-import shutil
 
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tools import *
+from data_logger import auto_cda_logger as logger
 from data_configuration import Configuration
 import numpy as np
 from pandas.io.formats.info import DataFrameInfo
@@ -146,10 +146,6 @@ class DataExplorer:
         self._hist_qq_save_dir = save_dir + 'hist_qq_plot/'
         self._box_plot_save_dir = save_dir + 'box_plot/'
 
-        self._report_save_dir = save_dir + 'report/'
-
-        self._report = []
-
         # 探索字段内置类型.
         self._explore_field_built_type()
         # 探索内置信息.
@@ -235,13 +231,6 @@ class DataExplorer:
         # 探索关系.
         self._explore_field_relation_info(self._data)
 
-        # 保存报告
-        create_dir(self._report_save_dir, delete=True)
-        with open(self._report_save_dir + 'report.txt', 'w', encoding='utf-8') as f:
-            for report in self._report:
-                f.write(report)
-                f.write('\n')
-
         plt.rcParams['font.sans-serif'] = ['SimHei']
         plt.rcParams['axes.unicode_minus'] = False
         # 直方图.
@@ -297,14 +286,11 @@ class DataExplorer:
 
         # 超过100个字段，缩略打印，否则展开打印.
         msg = f'前{head_num}行数据（shape={self._data.shape}）：'
-        self._report.append(msg)
-        print_with_sep_line(msg)
+        logger.info(msg)
         if len(self._head_n_data.columns) > 100:
-            print(self._head_n_data)
-            self._report.append(self._head_n_data)
+            logger.info(self._head_n_data)
         else:
-            print(self._head_n_data.to_markdown())
-            self._report.append(self._head_n_data.to_markdown())
+            logger.info(self._head_n_data.to_markdown())
 
         self._explore_head_flag = True
 
@@ -366,15 +352,12 @@ class DataExplorer:
             self._class_field_info.append(count_ratio)
         self._data_info['class-fields-count'] = [len(class_fields)]
         msg = f'类别型字段摘要信息（总个数：{len(class_fields)}）：'
-        print_with_sep_line(msg)
-        self._report.append(msg)
+        logger.info(msg)
         for i in range(len(class_fields)):
             msg = f'类别型字段名称：{class_fields[i]}，唯一值个数：{len(self._class_field_info[i])}'
-            self._report.append(msg)
-            print(msg)
+            logger.info(msg)
             msg = self._class_field_info[i].to_markdown()
-            print(msg)
-            self._report.append(msg)
+            logger.info(msg)
 
         return self._data_info, self._class_field_info
 
@@ -530,8 +513,7 @@ class DataExplorer:
         # 获取重复数据.
         if len(duplicates) > 0:
             self._duplicate_info = self._data.loc[duplicates.index]
-            print_with_sep_line('重复数据详细信息：')
-            print(self._duplicate_info)
+            logger.info(f'重复数据详细信息：\n{self._duplicate_info}')
 
         self._explore_duplicate_flag = True
 
@@ -685,14 +667,14 @@ class DataExplorer:
                 f_series[source] = anova_results['F'].iloc[0]
                 p_series[source] = anova_results['PR(>F)'].iloc[0]
                 relation_series[source] = ('Yes' if anova_results['PR(>F)'].iloc[0] < 0.05 else 'No')
-                print('-' * 100)
-                print(f'数值型字段=f(类别型字段)相关性分析结果（{target}=f({source})）：\n', anova_results)
+                logger.info('-' * 100)
+                logger.info(f'数值型字段=f(类别型字段)相关性分析结果（{target}=f({source})）：\n{anova_results}')
             f_df[target] = f_series
             p_df[target] = p_series
             relation_df[target] = relation_series
-        print_with_sep_line('数值型字段=f(类别型字段) anova相关性分析 F值：\n', f_df.to_markdown())
-        print_with_sep_line('数值型字段=f(类别型字段) anova相关性分析 p值：\n', p_df.to_markdown())
-        print_with_sep_line('数值型字段=f(类别型字段) anova相关性：\n', relation_df.to_markdown())
+        logger.info(f'数值型字段=f(类别型字段) anova相关性分析 F值：\n{f_df.to_markdown()}')
+        logger.info(f'数值型字段=f(类别型字段) anova相关性分析 p值：\n{p_df.to_markdown()}')
+        logger.info(f'数值型字段=f(类别型字段) anova相关性：\n{relation_df.to_markdown()}')
 
     def explore_value_field_relation(self, data: DataFrame):
         # 相关性分析.
@@ -703,10 +685,9 @@ class DataExplorer:
         # 筛选出大于阈值的数据
         cleaned_result = result.stack().loc[lambda x: abs(x) >= self._relation_threshold].reset_index(name='value')
         cleaned_result = cleaned_result.sort_values(by='value', key=lambda x: x.abs(), ascending=False)
-        print_with_sep_line(f'数值型字段线性相关性矩阵：\n{corr_matrix.to_markdown()}')
+        logger.info(f'数值型字段线性相关性矩阵：\n{corr_matrix.to_markdown()}')
         # 结果中，'level_0'是行标签，'level_1'是列标签，'value'是相关性值
-        print_with_sep_line(f'数值型字段|线性相关性|>={self._relation_threshold}的变量：\n',
-                            cleaned_result.to_markdown())
+        logger.info(f'数值型字段|线性相关性|>={self._relation_threshold}的变量：\n{cleaned_result.to_markdown()}')
 
         # 绘制散点图.
         # if len(cleaned_result) > 0:
@@ -763,22 +744,22 @@ class DataExplorer:
                     cross_table_ratio = cross_table.div(cross_table['All'], axis=0)
                     # 卡方检验.
                     chi_square, p_value, dof, expected_freq = stats.chi2_contingency(cross_table)
-                    print('-' * 100)
+                    logger.info('-' * 100)
                     relation = ("Yes" if p_value < 0.05 else "No")
                     relation_series[col_name] = relation
-                    print(
+                    logger.info(
                         f'类别字段({row_name}, {col_name})列联表分析: relation={relation}, chi_square={chi_square}, p={p_value}')
-                    print(f'频数列联表({row_name}, {col_name}): \n', cross_table)
-                    print('-' * 50)
-                    print(f'频率列联表({row_name}, {col_name}): \n', cross_table_ratio)
+                    logger.info(f'频数列联表({row_name}, {col_name}): \n{cross_table}')
+                    logger.info('-' * 50)
+                    logger.info(f'频率列联表({row_name}, {col_name}): \n{cross_table_ratio}')
                     chi_square_series[col_name] = chi_square
                     p_series[col_name] = p_value
                 chi_square_df[row_name] = chi_square_series
                 p_df[row_name] = p_series
                 relation_df[row_name] = relation_series
-            print_with_sep_line('类别型字段相关性卡方统计量：\n', chi_square_df.to_markdown())
-            print_with_sep_line('类别型字段相关性p值：\n', p_df.to_markdown())
-            print_with_sep_line('类别型字段相关性（p<0.05）：\n', relation_df.to_markdown())
+            logger.info(f'类别型字段相关性卡方统计量：\n{chi_square_df.to_markdown()}')
+            logger.info(f'类别型字段相关性p值：\n{p_df.to_markdown()}')
+            logger.info(f'类别型字段相关性（p<0.05）：\n{relation_df.to_markdown()}')
 
     def _hist_qq_plot(self, data: DataFrame = None) -> None:
         """
@@ -1068,11 +1049,11 @@ class DataExplorer:
 
     def print_summary(self) -> None:
 
-        print_with_sep_line('数据整体摘要信息：')
-        print(self._data_info.to_markdown())
+        logger.info('数据整体摘要信息：')
+        logger.info(self._data_info.to_markdown())
 
-        print_with_sep_line(f'数据列的摘要信息：（总列数：{len(self._data.columns)}）')
-        print(self._field_info.to_markdown())
+        logger.info(f'数据列的摘要信息：（总列数：{len(self._data.columns)}）')
+        logger.info(self._field_info.to_markdown())
 
-        print_with_sep_line(f'数值型字段摘要信息（总个数：{len(self._value_field_list)}）：')
-        print(self._value_field_info.to_markdown())
+        logger.info(f'数值型字段摘要信息（总个数：{len(self._value_field_list)}）：')
+        logger.info(self._value_field_info.to_markdown())

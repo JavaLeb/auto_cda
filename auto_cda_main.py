@@ -4,7 +4,7 @@ from data_splitter import DataSplitter
 from data_processor import DataProcessor
 from data_modeler import DataModeler
 from data_configuration import Configuration
-
+from data_logger import  auto_cda_logger as logger
 
 if __name__ == '__main__':
     conf = Configuration(conf_path=r'conf/ml_config.yml')
@@ -45,4 +45,4 @@ if __name__ == '__main__':
     data_modeler.model(train_data, valid_data)
     data_modeler.save_predict(test_data,processed_test_data)
 
-    print('程序结束！')
+    logger.info('程序结束！')

@@ -1,6 +1,6 @@
 import pandas as pd
 from pandas import DataFrame
-from tools import logger
+from data_logger import auto_cda_logger as logger
 from data_configuration import Configuration
 import numpy as np
 import polars as pl
@@ -109,7 +109,7 @@ class DataIntegration:
                 if zipped:
                     df[col] = col_value
         end_mem = df.memory_usage().sum() / 1024 ** 2  # 压缩后内存大小.
-        print(f'Memory usage {round(start_mem, 2)} MB, after optimization {round(end_mem, 2)} MB, '
+        logger.info(f'Memory usage {round(start_mem, 2)} MB, after optimization {round(end_mem, 2)} MB, '
               f'reduce ratio {round((start_mem - end_mem) / start_mem, 2)}')
 
         return df

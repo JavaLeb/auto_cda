@@ -1,6 +1,6 @@
 import yaml
 from typing import Any
-from tools import logger
+from data_logger import auto_cda_logger as logger
 
 
 class ConfParser:
@@ -14,7 +14,7 @@ class ConfParser:
                 config = yaml.safe_load(file)
                 return config
             except yaml.YAMLError as e:
-                print('配置文件加载失败：', e)
+                logger.error('配置文件加载失败：', e)
 
 
 class Configuration:
