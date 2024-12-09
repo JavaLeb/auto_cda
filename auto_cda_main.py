@@ -16,12 +16,12 @@ def auto_202409():
     # 数据读取.
     data_integration = DataIntegration(conf=conf)
     training_data = data_integration.read_reduce_memory(file_path=r'data/202409/training_data.csv')
-    training_data = training_data.head(10000)
+    # training_data = training_data.head(10000)
     phone_brand_device_model_data = data_integration \
         .read_reduce_memory(file_path=r'data/202409/phone_brand_device_model.csv')
     events_data = data_integration.read_reduce_memory(file_path=r'data/202409/events.csv',
                                                       date_time_col='timestamp')
-    events_data = events_data.head(10000)
+    # events_data = events_data.head(10000)
     app_events_data = data_integration.read_reduce_memory(file_path=r'data/202409/app_events.csv')
     app_labels_data = data_integration.read_reduce_memory(file_path=r'data/202409/app_labels.csv')
     label_categories_data = data_integration.read_reduce_memory(file_path=r'data/202409/label_categories.csv')

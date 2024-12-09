@@ -360,7 +360,8 @@ data_modeler:
     #    - estimator: sklearn.svm.SVC
     #    - estimator: sklearn.ensemble.BaggingClassifier
     #    - estimator: xgboost.XGBClassifier
-    - estimator: sklearn.linear_model.LogisticRegression
+    - estimator: lightgbm.LGBMClassifier
+#    - estimator: sklearn.linear_model.LogisticRegression
     # 回归
   #    - estimator: sklearn.linear_model.LinearRegression
   #      param_grid: [ ]
