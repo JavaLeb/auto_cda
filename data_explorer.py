@@ -566,13 +566,14 @@ class DataExplorer:
         # 字段类型判断（CLASS、VALUE、OBJECT）.
         for col in self._data.columns:
             dtype = str(self._built_info.dtypes[col])
+            col_data_copy = self._data[col].copy()
             if col in self._class_field_list:
                 self._field_type_list.append('CLASS')
                 if dtype.startswith('float') or dtype.startswith('int'):
                     self._class_value_field_list.append(col)
                 else:
                     try:
-                        pd.to_numeric(self._data[col], errors='raise')
+                        pd.to_numeric(col_data_copy, errors='raise')
                         self._class_value_field_list.append(col)
                     except (ValueError, TypeError):
                         self._class_text_field_list.append(col)
@@ -581,17 +582,17 @@ class DataExplorer:
                 self._value_field_list.append(col)
             elif dtype.startswith('object'):
                 try:
-                    pd.to_numeric(self._data[col], errors='raise')
+                    pd.to_numeric(col_data_copy, errors='raise')
                     self._field_type_list.append('VALUE')
                     self._value_field_list.append(col)
                 except ValueError:
                     self._field_type_list.append('OBJECT')
                     self._object_field_list.append(col)
-            elif dtype.startswith('datetime'):
-                numeric = pd.to_numeric(self._data[col], errors='raise')
-                self._data[col] = numeric
-                self._field_type_list.append('VALUE')
-                self._value_field_list.append(col)
+            # elif dtype.startswith('datetime'):
+            #     numeric = pd.to_numeric(self._data[col], errors='raise')
+            #     self._data[col] = numeric
+            #     self._field_type_list.append('VALUE')
+            #     self._value_field_list.append(col)
             else:
                 self._field_type_list.append('OBJECT')
                 self._object_field_list.append(col)

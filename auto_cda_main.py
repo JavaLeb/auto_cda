@@ -1,3 +1,5 @@
+import numpy as np
+
 from data_reader import DataIntegration
 from tools import *
 from data_explorer import DataExplorer
@@ -7,27 +9,31 @@ from data_modeler import DataModeler
 from data_configuration import Configuration
 from collections import Counter
 from data_submission import DataSubmission
+from pandas import DataFrame
+from tools import agg_date_time
 
 
-def auto_202409():
+def auto_cda():
     # 配置加载.
     conf = Configuration(conf_path=r'conf/ml_config.yml')
 
     # 数据读取.
     data_integration = DataIntegration(conf=conf)
+
     training_data = data_integration.read_reduce_memory(file_path=r'data/202409/training_data.csv')
-    # training_data = training_data.head(10000)
+    # training_data = training_data.head(3)
     phone_brand_device_model_data = data_integration \
         .read_reduce_memory(file_path=r'data/202409/phone_brand_device_model.csv')
     events_data = data_integration.read_reduce_memory(file_path=r'data/202409/events.csv',
-                                                      date_time_col='timestamp')
-    # events_data = events_data.head(10000)
+                                                      dt_col_formats=['timestamp'])
+    # events_data = events_data.head(100)
     app_events_data = data_integration.read_reduce_memory(file_path=r'data/202409/app_events.csv')
     app_labels_data = data_integration.read_reduce_memory(file_path=r'data/202409/app_labels.csv')
     label_categories_data = data_integration.read_reduce_memory(file_path=r'data/202409/label_categories.csv')
 
     # 测试数据读取.
     test_data = data_integration.read_reduce_memory(train=False)
+    # test_data = test_data.head(5)
 
     # # 数据探索.
     # training_data_explorer = DataExplorer(conf=conf, data=training_data, duplicate_fields=['device_id'])
@@ -78,29 +84,27 @@ def auto_202409():
     top_cnt_lambda = lambda x: top_one_lambda(x)[1]
     # 聚合函数字典.
     agg_dic = {
-        'event_id': [('event_id_min', 'min'), ('event_id_mean', 'mean'), ('event_id_max', 'max'),
-                     ('event_id_nunique', 'nunique')],
-        'app_id': [('app_id_min', 'min'), ('app_id_mean', 'mean'), ('app_id_max', 'max'),
-                   ('app_id_nunique', 'nunique')],
-        'longitude': [('longitude_min', 'min'), ('longitude_mean', 'mean'), ('longitude_max', 'max'),
-                      ('longitude_std', 'std')],
-        'latitude': [('latitude_min', 'min'), ('latitude_mean', 'mean'), ('latitude_max', 'max'),
-                     ('latitude_std', 'std')],
-        'timestamp': [('timestamp_min', 'min'), ('timestamp_max', 'max'),
-                      # ('timestamp_std', 'std'),
-                      ('timestamp_nunique', 'nunique')],
-        'is_installed': [('is_installed_min', 'min'), ('is_installed_mean', 'mean'), ('is_installed_max', 'max'),
-                         ('is_installed_sum', 'sum')],
-        'is_active': [('is_active_min', 'min'), ('is_active_mean', 'mean'), ('is_active_max', 'max'),
-                      ('is_active_sum', 'sum')],
-        'label_id': [('label_id', to_list_lambda)
-                     # , ('label_id_nunique', 'nunique'), ('label_id_top1', top_value_lambda),
-                     #          ('label_id_top1_cnt', top_cnt_lambda)
-                     ],
-        'category': [('category', to_list_lambda)
-                     # , ('category_nunique', 'nunique'), ('category_top1', top_value_lambda),
-                     #          ('category_top1_cnt', top_cnt_lambda)
-                     ]
+        # 'event_id': [('event_id_min', 'min'), ('event_id_mean', 'mean'), ('event_id_max', 'max'),
+        #              ('event_id_nunique', 'nunique')],
+        # 'app_id': [('app_id_min', 'min'), ('app_id_mean', 'mean'), ('app_id_max', 'max'),
+        #            ('app_id_nunique', 'nunique')],
+        # 'longitude': [('longitude_min', 'min'), ('longitude_mean', 'mean'), ('longitude_max', 'max'),
+        #               ('longitude_std', 'std')],
+        # 'latitude': [('latitude_min', 'min'), ('latitude_mean', 'mean'), ('latitude_max', 'max'),
+        #              ('latitude_std', 'std')],
+        'timestamp': ['min',  'max','std','nunique'],
+        # 'is_installed': [('is_installed_min', 'min'), ('is_installed_mean', 'mean'), ('is_installed_max', 'max'),
+        #                  ('is_installed_sum', 'sum')],
+        # 'is_active': [('is_active_min', 'min'), ('is_active_mean', 'mean'), ('is_active_max', 'max'),
+        #               ('is_active_sum', 'sum')],
+        # 'label_id': [('label_id', to_list_lambda)
+        #              # , ('label_id_nunique', 'nunique'), ('label_id_top1', top_value_lambda),
+        #              #          ('label_id_top1_cnt', top_cnt_lambda)
+        #              ],
+        # 'category': [('category', to_list_lambda)
+        #              # , ('category_nunique', 'nunique'), ('category_top1', top_value_lambda),
+        #              #          ('category_top1_cnt', top_cnt_lambda)
+        #              ]
     }
     # 聚合提取特征.
     app_events_labels_categories_agg_data = app_events_labels_categories_data.groupby(device_id).agg(
@@ -116,33 +120,36 @@ def auto_202409():
         .merge(phone_brand_device_model_data, on=device_id, how='left') \
         .merge(app_events_labels_categories_agg_data, on=device_id, how='left')
 
+    all_test_data = test_data \
+        .merge(phone_brand_device_model_data, on=device_id, how='left') \
+        .merge(app_events_labels_categories_agg_data, on=device_id, how='left')
+
+    # 训练和测试数据连接.
+    all_train_test_data = data_integration.integrate_vertical([all_training_data, all_test_data])
+
     # 数据探索.
-    training_data_explorer = DataExplorer(conf=conf, data=all_training_data)
+    training_data_explorer = DataExplorer(conf=conf, data=all_train_test_data)
     # training_data_explorer.explore()
 
     # 数据处理.
     data_processor = DataProcessor(conf=conf, base_data_explorer=training_data_explorer)
-    all_training_data = data_processor.process(all_training_data)
+    all_train_test_data = data_processor.process(all_train_test_data)
+
+    data_list = data_integration.separate_vertical(all_train_test_data)
+    all_training_data = data_list[0]
+    all_test_data = data_list[1]
 
     data_splitter = DataSplitter(conf=conf)
     train_data, valid_data = data_splitter.split0(all_training_data)
 
     data_modeler = DataModeler(conf=conf)
     data_modeler.model(train_data, valid_data)
-    # =====================================训练数据处理结束=======================================
 
-    # =====================================测试数据处理开始=======================================
-    all_test_data = test_data \
-        .merge(phone_brand_device_model_data, on=device_id, how='left') \
-        .merge(app_events_labels_categories_agg_data, on=device_id, how='left')
-
-    all_test_data = data_processor.process(all_test_data)
     predict_value = data_modeler.predict(all_test_data)
 
     # 提交数据结果.
     data_submission = DataSubmission(conf=conf)
     data_submission.submit(test_data, predict_value)
-    # =====================================测试数据处理结束=======================================
 
     # # =====================================测试答案数据处理开始=======================================
     # # 读取测试答案数据.
@@ -170,4 +177,4 @@ def auto_202409():
 
 
 if __name__ == '__main__':
-    auto_202409()
+    auto_cda()

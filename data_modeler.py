@@ -1,6 +1,5 @@
 import datetime
 import sklearn.preprocessing
-from pandas import DataFrame
 from data_configuration import Configuration
 from operator import methodcaller
 from tools import *
@@ -12,6 +11,7 @@ model_dic = {
     'sklearn.ensemble': ['RandomForestRegressor', 'RandomForestClassifier'],
     'sklearn.linear_model': ['LinearRegression']
 }
+from sklearn.linear_model import LogisticRegression
 
 
 class DataModeler:
@@ -38,6 +38,12 @@ class DataModeler:
         for model in models:
             model_name = model.get('estimator')
             params = model.get('param_grid')
+            if 'estimator' in params:  # 集成学习器的基分类器.
+                base_estimator_names = params.get('estimator')
+                base_estimators = []
+                for base_estimator_name in base_estimator_names:
+                    base_estimators.append(instantiate_class(base_estimator_name))
+                params['estimator'] = base_estimators
             self._params.append(params)
             module_path = model_name
             if '.' not in model_name:
@@ -161,7 +167,7 @@ class DataModeler:
         best_model_summary = self._summary.iloc[self._best_indices].reset_index(drop=True)['model']
         best_model_df = pd.concat([best_model_df, best_model_summary, best_model_params_df], axis=1)
         logger.info(f'最佳数据模型摘要：\n{best_model_df.to_markdown()}')
-        self._best_model = [self._models[i] for i in list(set(self._best_indices))]
+        self._best_model = [self._models[i] for i in self._best_indices]
         self._best_model_params = [self._best_model_params[i] for i in list(set(self._best_indices))]
 
         # 保存模型.
@@ -181,7 +187,7 @@ class DataModeler:
         create_dir(dir_path)
         # 保存最佳模型
         for i in range(0, len(self._assessments)):
-            model_path = os.path.join(dir_path, f'best_model-{self._assessments[i].get("name")}.pkl')
+            model_path = os.path.join(dir_path, f'best_modl-{self._assessments[i].get("name")}.pkl')
             # 模型保存
             joblib.dump(self._best_model[i], model_path)
             logger.info(f'模型保存路径{model_path}')

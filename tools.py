@@ -5,6 +5,7 @@ import glob
 import configparser
 import shutil
 import pandas as pd
+from pandas import DataFrame
 
 
 def get_fields(sub_conf, conf_name, data_columns):
@@ -89,10 +90,12 @@ def get_agg_df_new_col(agg_df):
 
     col_list = list()
     for col in agg_df.columns.values:
-        i = -1
-        while col[i] == '':  # 取最后一个不为空的列作为新的列名.
-            i = i - 1
-        col_list.append(col[i])
+        i = 0
+        new_col = []
+        for c in col:
+            if c != '':  # 取最后一个不为空的列作为新的列名.
+                new_col.append(c)
+        col_list.append('_'.join(new_col))
 
     return col_list
 
@@ -129,6 +132,35 @@ def is_int(param, min_value):
 
 def is_float(param, min_value):
     return True if isinstance(param, float) and param > min_value else False
+
+
+def agg_date_time(date_time_data: DataFrame, time_type=None, agg_type=None):
+    dt = date_time_data.dt
+    # data = (date_time_data - pd.Timestamp('1970-01-01')).dt.total_seconds()
+
+    if time_type == 'year':
+        data = dt.year
+    elif time_type == 'month':
+        data = dt.month
+    elif time_type == 'day':
+        data = dt.day
+    elif time_type == 'hour':
+        data = dt.hour
+    elif time_type == 'minute':
+        data = dt.minute
+    elif time_type == 'second':
+        data = dt.second
+    else:
+        data = (date_time_data - pd.Timestamp('1970-01-01')).dt.days
+
+    if agg_type == 'min':
+        return data.min()
+    elif agg_type == 'max':
+        return data.max()
+    elif agg_type == 'std':
+        return data.std()
+    elif agg_type == 'max_min':
+        return data.max() - data.min()
 
 
 if __name__ == '__main__':

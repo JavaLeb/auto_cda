@@ -14,6 +14,8 @@ global:
   date_field:
   class_fields: [ ]
   class_text_fields: [ ]
+  integrate_flag: ____integrate____
+
 
 # ===================================================================================================================
 # 数据源配置.
@@ -35,7 +37,7 @@ data_source:
   format: txt
   field_sep: ','
   train_path: data/202409/training_data.csv
-  test_path:  data/202409/test_data.csv
+  test_path: data/202409/test_data.csv
   header: 0
 
 # ===================================================================================================================
@@ -205,14 +207,14 @@ data_processor:
                   longitude_min,longitude_mean,longitude_max,longitude_std,
                   latitude_min,latitude_mean,latitude_max,latitude_std,timestamp_nunique,
                   is_installed_min,is_installed_mean,is_installed_max,is_installed_sum,
-                  is_active_min,is_active_mean,is_active_max,is_active_sum]
+                  is_active_min,is_active_mean,is_active_max,is_active_sum ]
         clean_method: simple_fill
         fill_params: { strategy: constant,
                        fill_value: 0,
                        add_indicator: false }
-      - fields: [ timestamp_min,timestamp_max ]
+      - fields: [ timestamp_min,timestamp_max ,timestamp_std ]
         clean_method: simple_fill
-        fill_params: { strategy: mean,
+        fill_params: { strategy: median,
                        fill_value: ,
                        add_indicator: false }
       - fields: [ label_id,category ]
@@ -240,7 +242,7 @@ data_processor:
   #         OrdinalEncoder: 有序编码，主要用于有序的类别字段编码；
   #     2、标准化转换器：对字段数值进行标准化，支持：
   #         MinMaxScaler：最大最小标准化
-  #         StandardScaler：标准化.
+  #         StandardScaler：标准化(z-score).
   #     4、其他系统内置转换器：系统内置的转换器均可，例如：
   #         TfidfVectorizer：文本词频-逆文档频率.
   #     4、自定义转换器：需实现fit()、transform()
@@ -260,13 +262,13 @@ data_processor:
             - transformer_name: TfidfVectorizer
               transformer:
                 instance: TfidfVectorizer
-                params: {max_features: 50}
+                params: { max_features: 50 }
               fields: [ label_id,category ]
           params:
-      - step_name: MaxAbsScaler
-        transformer:
-          instance: MaxAbsScaler
-          params:
+#      - step_name: MaxAbsScaler
+#        transformer:
+#          instance: MaxAbsScaler
+#          params:
 
 
 
@@ -358,10 +360,16 @@ data_modeler:
     # 分类.
     #    - estimator: sklearn.ensemble.AdaBoostClassifier
     #    - estimator: sklearn.svm.SVC
-    #    - estimator: sklearn.ensemble.BaggingClassifier
+    - estimator: sklearn.ensemble.BaggingClassifier
+      param_grid: { estimator: [ sklearn.svm.SVC ],n_estimators: [ 2 ] }
+
+#    - estimator: sklearn.ensemble.RandomForestClassifier
+#      param_grid: { n_estimators: [ 100,300,500 ], max_depth: [ 1,5,10,20 ] }
+
     #    - estimator: xgboost.XGBClassifier
-    - estimator: lightgbm.LGBMClassifier
+    #    - estimator: lightgbm.LGBMClassifier
 #    - estimator: sklearn.linear_model.LogisticRegression
+#      param_grid: { C: [ 0.1, 1, 10, 100 ],penalty: [ 'l1', 'l2' ], }
     # 回归
   #    - estimator: sklearn.linear_model.LinearRegression
   #      param_grid: [ ]
@@ -377,18 +385,18 @@ data_modeler:
     #      min_max: min
     #    - name: r2_score
     #      min_max: max
-    #    - name: accuracy_score
-    #      min_max: max
+    - name: accuracy_score
+      min_max: max
     #      params:
-    #    - name: precision_score
-    #      min_max: max
-    #      params: { average: micro }
+    - name: precision_score
+      min_max: max
+      params: { average: micro }
     - name: f1_score
       min_max: max
       params: { average: micro }
-  #    - name: recall_score
-  #      min_max: max
-  #      params: { average: micro }
+    - name: recall_score
+      min_max: max
+      params: { average: micro }
   #    - name: classification_report
   #      min_max: max
   #      params:
@@ -414,7 +422,7 @@ data_modeler:
 data_submission:
   result_file_dir: result/submission
   result_file_name: 考生姓名_results.csv
-  save_field: []
-  exclude_field: []
+  save_field: [ ]
+  exclude_field: [ ]
   predict_field: Predicted_Results
   predict_field_position: -1

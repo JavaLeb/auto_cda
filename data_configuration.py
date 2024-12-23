@@ -32,6 +32,7 @@ class Configuration:
         self._data_splitter_conf = self._conf.get('data_splitter')
         self._data_processor_conf = self._conf.get('data_processor')
         self._data_modeler_conf = self._conf.get('data_modeler')
+        self._global_conf = self._conf.get('global')
         logger.info(f'配置{conf_path}加载成功！！！！！！！！！！！！！！！！！！！！')
 
     @property
@@ -53,6 +54,10 @@ class Configuration:
     @property
     def data_modeler_conf(self):
         return self._data_modeler_conf
+
+    @property
+    def global_conf(self):
+        return self._global_conf
 
     @property
     def conf(self):

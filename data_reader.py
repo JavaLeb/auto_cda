@@ -4,6 +4,7 @@ from data_logger import auto_cda_logger as logger
 from data_configuration import Configuration
 import numpy as np
 import polars as pl
+from tools import *
 
 
 class DataIntegration:
@@ -17,14 +18,15 @@ class DataIntegration:
         self._header = data_source_conf.get('header')
         self._file_path = None
 
+        self._integrate_flag = conf.global_conf.get('integrate_flag')
+
     def read_reduce_memory(self, file_path: str = None,
                            file_format: str = 'csv',
                            field_sep: str = None,
                            header: int = None,
-                           date_time_col=None,
-                           date_format='%Y-%m-%d %H:%M:%S',
+                           dt_col_formats=None,
                            train: bool = True) -> DataFrame:
-        data = self.read(file_path, file_format, field_sep, header, date_time_col, date_format, train)
+        data = self.read(file_path, file_format, field_sep, header, dt_col_formats, train)
         data = self.reduce_memory(data)
 
         return data
@@ -33,13 +35,15 @@ class DataIntegration:
              file_format: str = 'csv',
              field_sep: str = None,
              header: int = None,
-             date_time_col=None,
-             date_format='%Y-%m-%d %H:%M:%S',
+             dt_col_formats=None,
              train: bool = True) -> DataFrame:
         """
         读取文件.
+        %Y表示四位年份，而%y表示两位年份；%m表示月份，%M表示分钟；%d表示日，而%D表示日期.
+        %Y-%m-%d
+        %H-%M-%S
 
-        :param date_time_col: 日期时间字段.
+        :param dt_col_formats: 日期时间字段列表，例如：['f1',('f2',),('f3','%Y')].
         :param file_path: 文件路径.
         :param file_format: 文件格式，支持（1）csv:文本格式，包括txt，（2）excel.
         :param field_sep: 行分隔符.
@@ -80,8 +84,26 @@ class DataIntegration:
                 raise Exception(f"读取文件失败，文件路径：{self._file_path}！不支持的数据格式.")
         else:
             raise Exception('不支持的数据源类型')
-        if date_time_col and len(date_time_col) > 0:
-            data[date_time_col] = pd.to_datetime(data[date_time_col], format=date_format)
+
+        if is_not_empty(dt_col_formats):
+            if not isinstance(dt_col_formats, list):
+                raise Exception('输入日期列格式必须是列表')
+            for col_format in dt_col_formats:
+                date_format = '%Y-%m-%d %H:%M:%S'
+                if isinstance(col_format, str):
+                    col = col_format
+                elif isinstance(col_format, tuple) or isinstance(col_format, list):
+                    if len(col_format) == 1:
+                        col = col_format[0]
+                    elif len(col_format) > 1:
+                        col = col_format[0]
+                        if col_format[1] is not None:
+                            date_format = col_format[1]
+                    else:
+                        raise Exception(f'日期参数错误：{dt_col_formats}')
+                else:
+                    raise Exception('输入日期列格式的每个元素必须是字符串、列表或者元组')
+                data[col] = pd.to_datetime(data[col], format=date_format)
         logger.info(f'数据[{self._file_path}]加载成功!!!!!!!!!!!!!!!!!!!!')
 
         return data
@@ -153,3 +175,41 @@ class DataIntegration:
                 return zipped, zipped_value
 
         return zipped, zipped_value
+
+    def integrate_horizontal(self, data_frames: list):
+        """
+        横向连接.
+        :param data_frames:
+        :return:
+        """
+        return pd.concat(data_frames, axis=1)
+
+    def integrate_vertical(self, data_frames: list):
+        """
+        纵向连接.
+        :param data_frames:
+        :return:
+        """
+        # 添加合并的标记字段.
+
+        for i in range(len(data_frames)):
+            if i < len(data_frames) - 1:
+                set_i = set(data_frames[i].columns)
+                set_i_1 = set(data_frames[i + 1].columns)
+                if set_i != set_i_1:
+                    diff = set_i ^ set_i_1
+                    logger.warn(f'所合并的两个dataframe字段不同, diff = {diff}')
+            data_frames[i][self._integrate_flag] = i
+
+        return pd.concat(data_frames, axis=0).reset_index(drop=True)
+
+    def separate_vertical(self, data_frame: DataFrame):
+        separate_dfs = []
+        if self._integrate_flag in data_frame.columns:
+            groups = data_frame.groupby(self._integrate_flag)
+            for _, group in groups:
+                separate_dfs.append(group.drop(columns=[self._integrate_flag]))
+        else:
+            separate_dfs.append(data_frame)
+
+        return separate_dfs

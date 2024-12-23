@@ -9,10 +9,12 @@ import numpy as np
 from typing import Union
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_selection import VarianceThreshold
 from data_explorer import DataExplorer
+import scipy.sparse as sp
+from pandas.api import types
 
 # 配置.
 DROP_FIELDS = 'drop_fields'
@@ -29,10 +31,13 @@ class DataProcessor:
         self._conf = conf.conf
         # 基数据: 比如处理测试数据缺失值时，使用训练数据的统计量填充.
         # 此时，训练数据就是基数据，测试数据是要处理的数据.
-        self._base_data = base_data_explorer.data()
+
+        if base_data_explorer:
+            self._base_data = base_data_explorer.data()
 
         # 获取目标字段.
         self._target_field = self._conf.get('global').get('target_field')
+        self._integrate_field = conf.global_conf.get('integrate_flag')
 
         # 获取配置.
         self._data_processor_conf = conf.data_processor_conf
@@ -61,15 +66,34 @@ class DataProcessor:
     def process(self, data: DataFrame = None) -> DataFrame:
 
         logger.info('数据处理开始......................')
+        # 字段
         selected_data = self.select_field(data)
 
-        cleaned_data = self.clean_field(selected_data)
+        # 日期字段转换为 数值.
+        valued_data = self.date_to_value(selected_data)
+
+        cleaned_data = self.clean_field(valued_data)
 
         transformed_data = self.transform_feature(cleaned_data)
 
         logger.info('数据处理完成！！！！！！！！！！！！！')
 
         return transformed_data
+
+    def date_to_value(self, data: DataFrame):
+        """基数据也需要转
+        """
+        for col in data.columns:
+            if types.is_datetime64_dtype(data[col]):  # 日期时间（绝对）
+                data[col] = (data[col] - pd.Timestamp('1970-01-01')).dt.days
+                if col in self._base_data.columns:
+                    self._base_data[col] = (self._base_data[col] - pd.Timestamp('1970-01-01')).dt.days
+            elif types.is_timedelta64_dtype(data[col]):  # 日期时间差（相对）
+                data[col] = data[col].dt.days
+                if col in self._base_data.columns:
+                    self._base_data[col] = self._base_data[col].dt.days
+
+        return data
 
     def select_field(self, data: DataFrame = None) -> DataFrame:
         logger.info('字段选择开始..........')
@@ -103,6 +127,8 @@ class DataProcessor:
     def _variance_threshold(self, data: DataFrame):
 
         data_copy = data.dropna()  # 含有缺失值的列不做方差阈值特征选择.
+        if self._integrate_field in data_copy.columns:
+            data_copy = data_copy.drop(columns=[self._integrate_field])
         # 文本类别字段需要编码，object字段不需要删除.
         if len(self._class_text_field_list) > 0:
             label_encoder = LabelEncoder()
@@ -114,6 +140,10 @@ class DataProcessor:
         # 先找出方差为0的字段.
         deleted_features_set = set()
         vt = VarianceThreshold(threshold=0)
+
+        for column in data_copy.columns:
+            if types.is_datetime64_dtype(data_copy[column]) or types.is_timedelta64_dtype(data_copy[column]):
+                data_copy[column] = data_copy[column].astype('int64')
         try:
             vt.fit_transform(data_copy)
             variances = vt.variances_
@@ -121,6 +151,8 @@ class DataProcessor:
             deleted_features_set.update(set(deleted_features))
         except ValueError as e:
             logger.error('所有特征将会被删除，这是不允许的！', e)
+        except Exception as e:
+            logger.error(e)
 
         # 再找出配置的字段.
         variance_threshold_selection = self._field_selection_conf.get('variance_threshold_selection')
@@ -370,7 +402,7 @@ class DataProcessor:
         :param data:
         :return:
         """
-
+        logger.info('数据转换开始..........')
         # 未配置转换器，直接返回原数据.
         if not self._data_transformer_conf:  # 如果未配置了转换器.
             return data
@@ -384,6 +416,12 @@ class DataProcessor:
         else:
             target_data = None
             feature_copy_data = copy_data
+
+        # 将合并标记分离.
+        integrate_data = None
+        if self._integrate_field in copy_data.columns:
+            integrate_data = feature_copy_data[self._integrate_field]
+            feature_copy_data = feature_copy_data.drop(columns=[self._integrate_field])
 
         # 处理转换器配置.
         steps = self._data_transformer_conf.get('steps')
@@ -408,7 +446,12 @@ class DataProcessor:
         # 连接目标字段.
         if target_data is not None:
             transformed_data = pd.concat([transformed_data, target_data], axis=1)
+        if integrate_data is not None:
+            transformed_data = pd.concat([transformed_data, integrate_data], axis=1)
         logger.info(f'数据转换前特征数：{len(feature_copy_data.columns)},转换后特征数：{len(new_cols)}')
+
+        logger.info('数据转换完成！！！！！！！！！！')
+
         return transformed_data
 
     def build_column_transformer(self, column_transformer, data: DataFrame):
@@ -542,7 +585,7 @@ class SparseTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        import scipy.sparse as sp
+
         if sp.issparse(X):
             return X.toarray()
         else:
